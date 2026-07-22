@@ -1,0 +1,30 @@
+FROM node:22-alpine AS web-builder
+WORKDIR /src/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
+FROM golang:1.26-alpine AS api-builder
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/sso ./cmd/sso
+
+FROM alpine:3.22
+RUN apk add --no-cache ca-certificates tzdata && addgroup -S sso && adduser -S -G sso sso
+WORKDIR /app
+COPY --from=api-builder /out/sso /app/sso
+COPY --from=web-builder /src/web/dist /app/web/dist
+RUN mkdir -p /app/data && chown -R sso:sso /app
+USER sso
+ENV SSO_ADDR=:8080 \
+    SSO_ISSUER=http://127.0.0.1:8080 \
+    SSO_DATABASE_DRIVER=sqlite \
+    SSO_DATABASE_DSN=/app/data/sso.db \
+    SSO_OAUTH_TOKEN_DB=/app/data/oauth-tokens.db \
+    SSO_WEB_DIR=/app/web/dist
+EXPOSE 8080
+VOLUME ["/app/data"]
+ENTRYPOINT ["/app/sso"]
