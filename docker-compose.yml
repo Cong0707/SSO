@@ -1,14 +1,37 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sso}
+      POSTGRES_USER: ${POSTGRES_USER:-sso}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sso-dev-password}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
   sso:
     build: .
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "8080:8080"
     environment:
       SSO_ISSUER: ${SSO_ISSUER:-http://127.0.0.1:8080}
       SSO_COOKIE_SECURE: ${SSO_COOKIE_SECURE:-false}
       SSO_REGISTRATION_ENABLED: ${SSO_REGISTRATION_ENABLED:-true}
-      SSO_INVITE_REQUIRED: ${SSO_INVITE_REQUIRED:-false}
+      SSO_DATABASE_DRIVER: postgres
+      SSO_DATABASE_DSN: host=postgres user=${POSTGRES_USER:-sso} password=${POSTGRES_PASSWORD:-sso-dev-password} dbname=${POSTGRES_DB:-sso} port=5432 sslmode=disable TimeZone=UTC
+      SSO_DATA_DIR: /app/data
+      SSO_MASTER_KEY_FILE: /app/data/master.key
+      SSO_OIDC_SIGNING_KEY_FILE: /app/data/oidc-signing.pem
+      SSO_ALLOW_KEY_GENERATION: "true"
       SSO_GITHUB_CLIENT_ID: ${SSO_GITHUB_CLIENT_ID:-}
       SSO_GITHUB_CLIENT_SECRET: ${SSO_GITHUB_CLIENT_SECRET:-}
       SSO_DISCORD_CLIENT_ID: ${SSO_DISCORD_CLIENT_ID:-}
@@ -21,8 +44,12 @@ services:
       SSO_TELEGRAM_BOT_TOKEN: ${SSO_TELEGRAM_BOT_TOKEN:-}
       SSO_WECHAT_CLIENT_ID: ${SSO_WECHAT_CLIENT_ID:-}
       SSO_WECHAT_CLIENT_SECRET: ${SSO_WECHAT_CLIENT_SECRET:-}
+    read_only: true
+    tmpfs:
+      - /tmp
     volumes:
       - sso-data:/app/data
 
 volumes:
+  postgres-data:
   sso-data:

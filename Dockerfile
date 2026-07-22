@@ -13,17 +13,22 @@ COPY . ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/sso ./cmd/sso
 
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates tzdata && addgroup -S sso && adduser -S -G sso sso
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -g 10001 -S sso \
+    && adduser -u 10001 -S -D -H -G sso sso
 WORKDIR /app
 COPY --from=api-builder /out/sso /app/sso
 COPY --from=web-builder /src/web/dist /app/web/dist
 RUN mkdir -p /app/data && chown -R sso:sso /app
-USER sso
+USER 10001:10001
 ENV SSO_ADDR=:8080 \
     SSO_ISSUER=http://127.0.0.1:8080 \
-    SSO_DATABASE_DRIVER=sqlite \
-    SSO_DATABASE_DSN=/app/data/sso.db \
-    SSO_OAUTH_TOKEN_DB=/app/data/oauth-tokens.db \
+    SSO_DATABASE_DRIVER=postgres \
+    SSO_DATABASE_DSN="host=127.0.0.1 user=sso password=change-me dbname=sso port=5432 sslmode=disable TimeZone=UTC" \
+    SSO_DATA_DIR=/app/data \
+    SSO_MASTER_KEY_FILE=/app/data/master.key \
+    SSO_OIDC_SIGNING_KEY_FILE=/app/data/oidc-signing.pem \
+    SSO_ALLOW_KEY_GENERATION=false \
     SSO_WEB_DIR=/app/web/dist
 EXPOSE 8080
 VOLUME ["/app/data"]

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sso
+spec:
+  selector:
+    app.kubernetes.io/name: sso
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+

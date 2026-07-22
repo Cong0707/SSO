@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sso
+  namespace: sso
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "3m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["sso.example.com"]
+      secretName: sso-tls
+  rules:
+    - host: sso.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sso
+                port:
+                  name: http
