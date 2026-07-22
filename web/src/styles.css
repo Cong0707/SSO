@@ -662,16 +662,48 @@ code {
   min-height: 36px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   color: var(--text);
   font-size: 12px;
   margin-top: 8px;
+  padding: 0 11px;
+  text-decoration: none;
 }
 .provider-button:hover {
   border-color: var(--text);
+}
+.provider-button small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
+}
+.provider-button.disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+.provider-button.disabled:hover {
+  border-color: var(--border-strong);
+}
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 8px;
+}
+.provider-hint {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.form-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
 }
 .spin {
   animation: spin 1s linear infinite;
@@ -1104,6 +1136,9 @@ code {
   }
   .auth-card {
     padding-top: 65px;
+  }
+  .provider-grid {
+    grid-template-columns: 1fr;
   }
   .auth-footer {
     position: static;

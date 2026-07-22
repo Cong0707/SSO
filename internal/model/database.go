@@ -37,7 +37,7 @@ func Open(cfg config.Config) (*gorm.DB, error) {
 	sqlDB.SetConnMaxLifetime(30 * time.Minute)
 	sqlDB.SetMaxIdleConns(5)
 	sqlDB.SetMaxOpenConns(20)
-	if cfg.DatabaseDriver == "sqlite" || cfg.DatabaseDriver == "sqlite3" {
+	if strings.EqualFold(cfg.DatabaseDriver, "sqlite") || strings.EqualFold(cfg.DatabaseDriver, "sqlite3") {
 		sqlDB.SetMaxOpenConns(1)
 	}
 	if err := Migrate(db); err != nil {

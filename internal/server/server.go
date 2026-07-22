@@ -20,41 +20,48 @@ import (
 	"github.com/Cong0707/sso/internal/config"
 	"github.com/Cong0707/sso/internal/model"
 	"github.com/Cong0707/sso/internal/security"
+	"github.com/Cong0707/sso/internal/upstream"
 	"github.com/gin-gonic/gin"
 	"github.com/go-oauth2/oauth2/v4"
 	oauthErrors "github.com/go-oauth2/oauth2/v4/errors"
 	"github.com/go-oauth2/oauth2/v4/generates"
 	"github.com/go-oauth2/oauth2/v4/manage"
 	"github.com/go-oauth2/oauth2/v4/server"
-	"github.com/go-oauth2/oauth2/v4/store"
 	"gorm.io/gorm"
 )
 
 const sessionCookie = "sso_session"
 
 type Server struct {
-	Cfg       config.Config
-	DB        *gorm.DB
-	OAuth     *server.Server
-	Clients   *clientStore
-	Tokens    oauth2.TokenStore
-	OIDCKey   *rsa.PrivateKey
-	OIDCKeyID string
+	Cfg               config.Config
+	DB                *gorm.DB
+	OAuth             *server.Server
+	Clients           *clientStore
+	Tokens            oauth2.TokenStore
+	UpstreamProviders *upstream.Registry
+	OIDCKey           *rsa.PrivateKey
+	OIDCKeyID         string
 }
 
 func New(cfg config.Config, db *gorm.DB) (*Server, error) {
-	tokenStore, err := store.NewFileTokenStore(cfg.OAuthTokenDB)
-	if err != nil {
-		return nil, fmt.Errorf("open OAuth token store: %w", err)
+	tokenStore := newDatabaseTokenStore(db, cfg.MasterKey)
+	signingKeyPath := cfg.OIDCSigningKeyFile
+	if signingKeyPath == "" {
+		if cfg.DataDir != "" {
+			signingKeyPath = filepath.Join(cfg.DataDir, "oidc-signing.pem")
+		} else {
+			signingKeyPath = filepath.Join(filepath.Dir(cfg.DatabaseDSN), "oidc-signing.pem")
+		}
 	}
-	key, err := loadSigningKey(filepath.Join(filepath.Dir(cfg.DatabaseDSN), "oidc-signing.pem"))
+	allowKeyGeneration := cfg.AllowKeyGeneration || cfg.DatabaseDriver == "sqlite" || cfg.DatabaseDriver == "sqlite3"
+	key, err := loadSigningKey(signingKeyPath, allowKeyGeneration)
 	if err != nil {
 		return nil, err
 	}
 
 	publicKeyDER := x509.MarshalPKCS1PublicKey(&key.PublicKey)
 	keyHash := sha256.Sum256(publicKeyDER)
-	app := &Server{Cfg: cfg, DB: db, Clients: &clientStore{db: db}, Tokens: tokenStore, OIDCKey: key, OIDCKeyID: "sso-" + base64.RawURLEncoding.EncodeToString(keyHash[:8])}
+	app := &Server{Cfg: cfg, DB: db, Clients: &clientStore{db: db}, Tokens: tokenStore, UpstreamProviders: upstream.NewRegistry(), OIDCKey: key, OIDCKeyID: "sso-" + base64.RawURLEncoding.EncodeToString(keyHash[:8])}
 	manager := manage.NewDefaultManager()
 	manager.SetAuthorizeCodeExp(5 * time.Minute)
 	manager.SetAuthorizeCodeTokenCfg(&manage.Config{AccessTokenExp: 15 * time.Minute, RefreshTokenExp: 30 * 24 * time.Hour, IsGenerateRefresh: true})
@@ -102,6 +109,7 @@ func New(cfg config.Config, db *gorm.DB) (*Server, error) {
 
 func (s *Server) Router() *gin.Engine {
 	router := gin.New()
+	_ = router.SetTrustedProxies(s.Cfg.TrustedProxies)
 	router.Use(gin.Logger(), gin.Recovery(), s.requestContext)
 	router.GET("/healthz", s.health)
 	router.GET("/.well-known/openid-configuration", s.oidcDiscovery)
@@ -153,8 +161,6 @@ func (s *Server) Router() *gin.Engine {
 	api.GET("/profile/export", s.requireAuth, s.exportData)
 	api.DELETE("/profile", s.requireAuth, s.requireSession, s.requireCSRF, s.deleteAccount)
 	api.GET("/providers", s.listProviders)
-	api.GET("/invites", s.requireAuth, s.listInvites)
-	api.POST("/invites", s.requireAuth, s.requireCSRF, s.createInvite)
 
 	router.NoRoute(s.serveWeb)
 	return router
@@ -165,6 +171,10 @@ func (s *Server) requestContext(c *gin.Context) {
 	c.Header("X-Frame-Options", "DENY")
 	c.Header("Referrer-Policy", "same-origin")
 	c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'")
+	c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+	if s.Cfg.CookieSecure {
+		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+	}
 	c.Next()
 }
 
@@ -320,12 +330,9 @@ func (s *Server) revokeCurrentSession(c *gin.Context) {
 func (s *Server) user(c *gin.Context) *model.User       { return c.MustGet("user").(*model.User) }
 func (s *Server) session(c *gin.Context) *model.Session { return c.MustGet("session").(*model.Session) }
 func publicUser(user *model.User) gin.H {
-	return gin.H{"id": user.ID, "username": user.Username, "email": user.Email, "display_name": user.DisplayName, "avatar_url": user.AvatarURL, "locale": user.Locale, "email_verified": user.EmailVerifiedAt != nil, "mfa_enabled": user.MFAEnabled, "role": user.Role, "security_email_enabled": user.SecurityEmailEnabled, "created_at": user.CreatedAt, "last_login_at": user.LastLoginAt}
+	return gin.H{"id": user.ID, "username": user.Username, "email": user.Email, "display_name": user.DisplayName, "avatar_url": user.AvatarURL, "locale": user.Locale, "email_verified": user.EmailVerifiedAt != nil, "mfa_enabled": user.MFAEnabled, "password_configured": user.PasswordConfigured, "role": user.Role, "security_email_enabled": user.SecurityEmailEnabled, "created_at": user.CreatedAt, "last_login_at": user.LastLoginAt}
 }
 func clientIP(c *gin.Context) string {
-	if forwarded := c.GetHeader("X-Forwarded-For"); forwarded != "" {
-		return strings.TrimSpace(strings.Split(forwarded, ",")[0])
-	}
 	return c.ClientIP()
 }
 func deviceName(userAgent string) string {
@@ -347,7 +354,7 @@ func deviceName(userAgent string) string {
 	return "浏览器设备"
 }
 
-func loadSigningKey(path string) (*rsa.PrivateKey, error) {
+func loadSigningKey(path string, allowGenerate bool) (*rsa.PrivateKey, error) {
 	if data, err := os.ReadFile(path); err == nil {
 		block, _ := pem.Decode(data)
 		if block == nil {
@@ -360,6 +367,9 @@ func loadSigningKey(path string) (*rsa.PrivateKey, error) {
 		return key, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
+	}
+	if !allowGenerate {
+		return nil, fmt.Errorf("OIDC signing key file %q does not exist; mount a shared key or set SSO_ALLOW_KEY_GENERATION=true for development", path)
 	}
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {

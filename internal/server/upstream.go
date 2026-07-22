@@ -1,13 +1,10 @@
 package server
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,27 +15,28 @@ import (
 	"github.com/Cong0707/sso/internal/config"
 	"github.com/Cong0707/sso/internal/model"
 	"github.com/Cong0707/sso/internal/security"
+	"github.com/Cong0707/sso/internal/upstream"
 	"github.com/gin-gonic/gin"
-	"golang.org/x/oauth2"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 type providerSeed struct {
-	Kind        string
-	Name        string
-	ClientID    string
-	Secret      string
-	Issuer      string
-	AuthURL     string
-	TokenURL    string
-	UserInfoURL string
-	Scopes      string
+	Kind         string
+	Name         string
+	ClientID     string
+	Secret       string
+	Issuer       string
+	AuthURL      string
+	TokenURL     string
+	UserInfoURL  string
+	EmailInfoURL string
+	Scopes       string
 }
 
 func seedProviders(db *gorm.DB, cfg config.Config) error {
 	seeds := []providerSeed{
-		{Kind: "github", Name: "GitHub", ClientID: os.Getenv("SSO_GITHUB_CLIENT_ID"), Secret: os.Getenv("SSO_GITHUB_CLIENT_SECRET"), AuthURL: "https://github.com/login/oauth/authorize", TokenURL: "https://github.com/login/oauth/access_token", UserInfoURL: "https://api.github.com/user", Scopes: "read:user user:email"},
+		{Kind: "github", Name: "GitHub", ClientID: os.Getenv("SSO_GITHUB_CLIENT_ID"), Secret: os.Getenv("SSO_GITHUB_CLIENT_SECRET"), AuthURL: "https://github.com/login/oauth/authorize", TokenURL: "https://github.com/login/oauth/access_token", UserInfoURL: "https://api.github.com/user", EmailInfoURL: "https://api.github.com/user/emails", Scopes: "read:user user:email"},
 		{Kind: "discord", Name: "Discord", ClientID: os.Getenv("SSO_DISCORD_CLIENT_ID"), Secret: os.Getenv("SSO_DISCORD_CLIENT_SECRET"), AuthURL: "https://discord.com/oauth2/authorize", TokenURL: "https://discord.com/api/oauth2/token", UserInfoURL: "https://discord.com/api/users/@me", Scopes: "identify email"},
 		{Kind: "oidc", Name: "OIDC", ClientID: os.Getenv("SSO_OIDC_CLIENT_ID"), Secret: os.Getenv("SSO_OIDC_CLIENT_SECRET"), Issuer: strings.TrimRight(os.Getenv("SSO_OIDC_ISSUER"), "/"), Scopes: "openid profile email"},
 		{Kind: "linuxdo", Name: "LinuxDO", ClientID: os.Getenv("SSO_LINUXDO_CLIENT_ID"), Secret: os.Getenv("SSO_LINUXDO_CLIENT_SECRET"), AuthURL: "https://connect.linux.do/oauth2/authorize", TokenURL: "https://connect.linux.do/oauth2/token", UserInfoURL: "https://connect.linux.do/api/user", Scopes: "user"},
@@ -47,11 +45,10 @@ func seedProviders(db *gorm.DB, cfg config.Config) error {
 	}
 	for _, seed := range seeds {
 		var provider model.UpstreamProvider
-		err := db.Where("kind = ?", seed.Kind).Limit(1).Find(&provider).Error
-		isNew := provider.ID == 0
-		if err != nil {
+		if err := db.Where("kind = ?", seed.Kind).Limit(1).Find(&provider).Error; err != nil {
 			return err
 		}
+		isNew := provider.ID == 0
 		if isNew {
 			provider = model.UpstreamProvider{Kind: seed.Kind}
 		}
@@ -60,9 +57,9 @@ func seedProviders(db *gorm.DB, cfg config.Config) error {
 			provider.ClientID = seed.ClientID
 		}
 		if seed.Secret != "" {
-			encrypted, encryptErr := security.Encrypt(cfg.MasterKey, seed.Secret)
-			if encryptErr != nil {
-				return encryptErr
+			encrypted, err := security.Encrypt(cfg.MasterKey, seed.Secret)
+			if err != nil {
+				return err
 			}
 			provider.ClientSecretEncrypted = encrypted
 		}
@@ -78,11 +75,15 @@ func seedProviders(db *gorm.DB, cfg config.Config) error {
 		if seed.UserInfoURL != "" {
 			provider.UserInfoURL = seed.UserInfoURL
 		}
+		if seed.EmailInfoURL != "" {
+			provider.EmailInfoURL = seed.EmailInfoURL
+		}
 		provider.Scopes = seed.Scopes
 		provider.Enabled = provider.ClientID != "" && provider.ClientSecretEncrypted != "" && seed.Kind != "telegram"
 		if seed.Kind == "telegram" {
 			provider.Enabled = provider.ClientSecretEncrypted != ""
 		}
+		var err error
 		if isNew {
 			err = db.Create(&provider).Error
 		} else {
@@ -113,52 +114,28 @@ func (s *Server) listProviders(c *gin.Context) {
 	}
 	items := make([]gin.H, 0, len(providers))
 	for _, provider := range providers {
-		items = append(items, gin.H{"id": provider.ID, "kind": provider.Kind, "display_name": provider.DisplayName, "enabled": provider.Enabled, "configured": provider.ClientID != "" || provider.ClientSecretEncrypted != "", "bound": bound[provider.ID]})
+		items = append(items, gin.H{
+			"id": provider.ID, "kind": provider.Kind, "display_name": provider.DisplayName,
+			"enabled": provider.Enabled, "configured": providerConfigured(provider), "bound": bound[provider.ID],
+		})
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
 }
 
 func (s *Server) upstreamStart(c *gin.Context) {
 	kind := strings.ToLower(c.Param("kind"))
-	var provider model.UpstreamProvider
-	if err := s.DB.Where("kind = ? AND enabled = ?", kind, true).First(&provider).Error; err != nil {
+	var providerRecord model.UpstreamProvider
+	if err := s.DB.Where("kind = ? AND enabled = ?", kind, true).First(&providerRecord).Error; err != nil {
 		s.serveError(c, http.StatusNotFound, "该登录方式未配置")
 		return
 	}
 	if kind == "telegram" {
-		s.serveError(c, http.StatusNotImplemented, "该接入商需要专用登录协议，当前尚未启用")
+		s.serveError(c, http.StatusNotImplemented, "Telegram 需要配置 Login Widget 后从登录页发起")
 		return
 	}
-	if kind == "wechat" {
-		state, err := security.RandomToken(32)
-		if err != nil {
-			s.serveError(c, http.StatusInternalServerError, "生成登录状态失败")
-			return
-		}
-		returnTo := safeReturnTo(c.Query("return_to"))
-		var sessionID *uint64
-		if _, session, sessionErr := s.sessionUser(c); sessionErr == nil {
-			sessionID = &session.ID
-		}
-		stateRecord := model.UpstreamOAuthState{ProviderID: provider.ID, SessionID: sessionID, TokenHash: security.HashToken(state), ReturnTo: returnTo, ExpiresAt: time.Now().Add(10 * time.Minute)}
-		if err := s.DB.Create(&stateRecord).Error; err != nil {
-			s.serveError(c, http.StatusInternalServerError, "保存登录状态失败")
-			return
-		}
-		redirectURI := s.Cfg.Issuer + "/oauth/upstream/wechat/callback"
-		wechatURL := provider.AuthorizationURL + "?appid=" + url.QueryEscape(provider.ClientID) + "&redirect_uri=" + url.QueryEscape(redirectURI) + "&response_type=code&scope=snsapi_login&state=" + url.QueryEscape(state) + "#wechat_redirect"
-		c.Redirect(http.StatusFound, wechatURL)
-		return
-	}
-	if kind == "oidc" {
-		if err := discoverOIDC(c.Request.Context(), &provider); err != nil {
-			s.serveError(c, http.StatusBadGateway, "读取 OIDC 发现文档失败")
-			return
-		}
-	}
-	secret, err := security.Decrypt(s.Cfg.MasterKey, provider.ClientSecretEncrypted)
+	provider, err := s.buildUpstreamProvider(providerRecord)
 	if err != nil {
-		s.serveError(c, http.StatusInternalServerError, "读取上游密钥失败")
+		s.serveError(c, http.StatusBadGateway, "上游登录配置无效")
 		return
 	}
 	state, err := security.RandomToken(32)
@@ -171,25 +148,34 @@ func (s *Server) upstreamStart(c *gin.Context) {
 		s.serveError(c, http.StatusInternalServerError, "生成 PKCE 参数失败")
 		return
 	}
+	challenge := sha256.Sum256([]byte(verifier))
+	redirectURL := s.Cfg.Issuer + "/oauth/upstream/" + providerRecord.Kind + "/callback"
+	authorizationURL, err := provider.AuthorizationURL(c.Request.Context(), upstream.AuthorizationRequest{
+		RedirectURL: redirectURL, State: state,
+		CodeChallenge: base64.RawURLEncoding.EncodeToString(challenge[:]), CodeChallengeMethod: "S256",
+	})
+	if err != nil {
+		s.serveError(c, http.StatusBadGateway, "读取上游授权地址失败")
+		return
+	}
 	encryptedVerifier, err := security.Encrypt(s.Cfg.MasterKey, verifier)
 	if err != nil {
 		s.serveError(c, http.StatusInternalServerError, "保存 PKCE 参数失败")
 		return
 	}
-	returnTo := safeReturnTo(c.Query("return_to"))
 	var sessionID *uint64
 	if _, session, sessionErr := s.sessionUser(c); sessionErr == nil {
 		sessionID = &session.ID
 	}
-	stateRecord := model.UpstreamOAuthState{ProviderID: provider.ID, SessionID: sessionID, TokenHash: security.HashToken(state), CodeVerifierEncrypted: encryptedVerifier, ReturnTo: returnTo, ExpiresAt: time.Now().Add(10 * time.Minute)}
+	stateRecord := model.UpstreamOAuthState{
+		ProviderID: providerRecord.ID, SessionID: sessionID, TokenHash: security.HashToken(state),
+		CodeVerifierEncrypted: encryptedVerifier, ReturnTo: safeReturnTo(c.Query("return_to")), ExpiresAt: time.Now().Add(10 * time.Minute),
+	}
 	if err := s.DB.Create(&stateRecord).Error; err != nil {
 		s.serveError(c, http.StatusInternalServerError, "保存登录状态失败")
 		return
 	}
-	challenge := sha256.Sum256([]byte(verifier))
-	config := oauth2.Config{ClientID: provider.ClientID, ClientSecret: secret, RedirectURL: s.Cfg.Issuer + "/oauth/upstream/" + provider.Kind + "/callback", Scopes: strings.Fields(provider.Scopes), Endpoint: oauth2.Endpoint{AuthURL: provider.AuthorizationURL, TokenURL: provider.TokenURL}}
-	authURL := config.AuthCodeURL(state, oauth2.SetAuthURLParam("code_challenge", base64.RawURLEncoding.EncodeToString(challenge[:])), oauth2.SetAuthURLParam("code_challenge_method", "S256"))
-	c.Redirect(http.StatusFound, authURL)
+	c.Redirect(http.StatusFound, authorizationURL)
 }
 
 func (s *Server) upstreamCallback(c *gin.Context) {
@@ -204,57 +190,32 @@ func (s *Server) upstreamCallback(c *gin.Context) {
 		return
 	}
 	now := time.Now()
-	if s.DB.Model(&state).Update("used_at", &now).Error != nil {
-		c.Redirect(http.StatusFound, "/login?oauth_error=state_update_failed")
+	result := s.DB.Model(&model.UpstreamOAuthState{}).Where("id = ? AND used_at IS NULL", state.ID).Update("used_at", &now)
+	if result.Error != nil || result.RowsAffected != 1 {
+		c.Redirect(http.StatusFound, "/login?oauth_error=state_already_used")
 		return
 	}
-	var provider model.UpstreamProvider
-	if s.DB.First(&provider, state.ProviderID).Error != nil || provider.Kind != strings.ToLower(c.Param("kind")) {
+	var providerRecord model.UpstreamProvider
+	if s.DB.First(&providerRecord, state.ProviderID).Error != nil || !providerRecord.Enabled || providerRecord.Kind != strings.ToLower(c.Param("kind")) {
 		c.Redirect(http.StatusFound, "/login?oauth_error=provider_mismatch")
 		return
 	}
-	if provider.Kind == "oidc" {
-		if err := discoverOIDC(c.Request.Context(), &provider); err != nil {
-			c.Redirect(http.StatusFound, "/login?oauth_error=oidc_discovery_failed")
-			return
-		}
-	}
-	secret, err := security.Decrypt(s.Cfg.MasterKey, provider.ClientSecretEncrypted)
+	provider, err := s.buildUpstreamProvider(providerRecord)
 	if err != nil {
-		c.Redirect(http.StatusFound, "/login?oauth_error=provider_secret_failed")
+		c.Redirect(http.StatusFound, "/login?oauth_error=provider_configuration_failed")
 		return
 	}
-	httpClient := &http.Client{Timeout: 15 * time.Second}
-	ctx := context.WithValue(c.Request.Context(), oauth2.HTTPClient, httpClient)
-	var accessToken, openID string
-	if provider.Kind == "wechat" {
-		accessToken, openID, err = exchangeWeChat(ctx, provider, secret, c.Query("code"))
-	} else {
-		verifier, verifierErr := security.Decrypt(s.Cfg.MasterKey, state.CodeVerifierEncrypted)
-		if verifierErr != nil {
-			c.Redirect(http.StatusFound, "/login?oauth_error=pkce_failed")
-			return
-		}
-		config := oauth2.Config{ClientID: provider.ClientID, ClientSecret: secret, RedirectURL: s.Cfg.Issuer + "/oauth/upstream/" + provider.Kind + "/callback", Scopes: strings.Fields(provider.Scopes), Endpoint: oauth2.Endpoint{AuthURL: provider.AuthorizationURL, TokenURL: provider.TokenURL}}
-		token, exchangeErr := config.Exchange(ctx, c.Query("code"), oauth2.SetAuthURLParam("code_verifier", verifier))
-		if exchangeErr == nil {
-			accessToken = token.AccessToken
-		} else {
-			err = exchangeErr
-		}
-	}
+	verifier, err := security.Decrypt(s.Cfg.MasterKey, state.CodeVerifierEncrypted)
 	if err != nil {
-		c.Redirect(http.StatusFound, "/login?oauth_error=token_exchange_failed")
+		c.Redirect(http.StatusFound, "/login?oauth_error=pkce_failed")
 		return
 	}
-	var identityData upstreamIdentityData
-	if provider.Kind == "wechat" {
-		identityData, err = fetchWeChatIdentity(ctx, provider, accessToken, openID)
-	} else {
-		identityData, err = fetchUpstreamIdentity(ctx, httpClient, provider, accessToken)
-	}
+	identityData, err := provider.Exchange(c.Request.Context(), upstream.CallbackRequest{
+		RedirectURL: s.Cfg.Issuer + "/oauth/upstream/" + providerRecord.Kind + "/callback",
+		Code:        c.Query("code"), CodeVerifier: verifier,
+	})
 	if err != nil {
-		c.Redirect(http.StatusFound, "/login?oauth_error=userinfo_failed")
+		c.Redirect(http.StatusFound, "/login?oauth_error=upstream_exchange_failed")
 		return
 	}
 	var user model.User
@@ -266,7 +227,7 @@ func (s *Server) upstreamCallback(c *gin.Context) {
 		}
 	} else {
 		var existing model.UpstreamIdentity
-		identityErr := s.DB.Where("provider_id = ? AND external_id = ?", provider.ID, identityData.ID).First(&existing).Error
+		identityErr := s.DB.Where("provider_id = ? AND external_id = ?", providerRecord.ID, identityData.Subject).First(&existing).Error
 		if identityErr == nil {
 			if s.DB.First(&user, existing.UserID).Error != nil {
 				c.Redirect(http.StatusFound, "/login?oauth_error=user_missing")
@@ -280,7 +241,7 @@ func (s *Server) upstreamCallback(c *gin.Context) {
 				_ = s.DB.Where("LOWER(email) = ?", strings.ToLower(identityData.Email)).First(&user).Error
 			}
 			if user.ID == 0 {
-				user, err = s.provisionUpstreamUser(provider, identityData)
+				user, err = s.provisionUpstreamUser(providerRecord, identityData)
 				if err != nil {
 					c.Redirect(http.StatusFound, "/login?oauth_error=provision_failed")
 					return
@@ -288,125 +249,76 @@ func (s *Server) upstreamCallback(c *gin.Context) {
 			}
 		}
 	}
+	if user.ID == 0 || user.Status != "active" {
+		c.Redirect(http.StatusFound, "/login?oauth_error=account_unavailable")
+		return
+	}
 	var conflict model.UpstreamIdentity
-	if err := s.DB.Where("provider_id = ? AND external_id = ?", provider.ID, identityData.ID).First(&conflict).Error; err == nil && conflict.UserID != user.ID {
+	if err := s.DB.Where("provider_id = ? AND external_id = ?", providerRecord.ID, identityData.Subject).First(&conflict).Error; err == nil && conflict.UserID != user.ID {
 		c.Redirect(http.StatusFound, "/profile?oauth_error=already_bound")
 		return
 	}
-	identity := model.UpstreamIdentity{UserID: user.ID, ProviderID: provider.ID, ExternalID: identityData.ID, ExternalName: identityData.Name, ExternalEmail: identityData.Email, LastLoginAt: now}
-	if err := s.DB.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "provider_id"}, {Name: "external_id"}}, DoUpdates: clause.AssignmentColumns([]string{"external_name", "external_email", "last_login_at", "updated_at"})}).Create(&identity).Error; err != nil {
+	var userProviderIdentity model.UpstreamIdentity
+	if err := s.DB.Where("provider_id = ? AND user_id = ?", providerRecord.ID, user.ID).First(&userProviderIdentity).Error; err == nil && userProviderIdentity.ExternalID != identityData.Subject {
+		c.Redirect(http.StatusFound, "/profile?oauth_error=provider_already_bound")
+		return
+	}
+	externalName := strings.TrimSpace(identityData.Name)
+	if externalName == "" {
+		externalName = strings.TrimSpace(identityData.Username)
+	}
+	identity := model.UpstreamIdentity{
+		UserID: user.ID, ProviderID: providerRecord.ID, ExternalID: identityData.Subject,
+		ExternalName: externalName, ExternalEmail: strings.ToLower(strings.TrimSpace(identityData.Email)), LastLoginAt: now,
+	}
+	if err := s.DB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "provider_id"}, {Name: "external_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"external_name", "external_email", "last_login_at", "updated_at"}),
+	}).Create(&identity).Error; err != nil {
 		c.Redirect(http.StatusFound, "/login?oauth_error=bind_failed")
 		return
 	}
+	if err := s.syncUpstreamProfile(&user, identityData); err != nil {
+		c.Redirect(http.StatusFound, "/login?oauth_error=profile_sync_failed")
+		return
+	}
+	user.LastLoginAt = &now
+	_ = s.DB.Model(&user).Update("last_login_at", &now).Error
 	if state.SessionID == nil {
 		if _, err := s.createSession(c, &user); err != nil {
 			c.Redirect(http.StatusFound, "/login?oauth_error=session_failed")
 			return
 		}
 	}
-	s.audit(c, "upstream.login."+provider.Kind, user.ID, identityData.ID)
+	s.audit(c, "upstream.login."+providerRecord.Kind, user.ID, identityData.Subject)
 	c.Redirect(http.StatusFound, state.ReturnTo)
 }
 
-type upstreamIdentityData struct {
-	ID            string
-	Name          string
-	Email         string
-	Avatar        string
-	EmailVerified bool
+func (s *Server) buildUpstreamProvider(provider model.UpstreamProvider) (upstream.Provider, error) {
+	secret, err := security.Decrypt(s.Cfg.MasterKey, provider.ClientSecretEncrypted)
+	if err != nil {
+		return nil, err
+	}
+	return s.UpstreamProviders.Build(upstream.Config{
+		Kind: provider.Kind, DisplayName: provider.DisplayName, ClientID: provider.ClientID, ClientSecret: secret,
+		IssuerURL: provider.IssuerURL, AuthorizationURL: provider.AuthorizationURL, TokenURL: provider.TokenURL,
+		UserInfoURL: provider.UserInfoURL, EmailInfoURL: provider.EmailInfoURL, Scopes: strings.Fields(provider.Scopes),
+	})
 }
 
-func fetchUpstreamIdentity(ctx context.Context, client *http.Client, provider model.UpstreamProvider, accessToken string) (upstreamIdentityData, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, provider.UserInfoURL, nil)
-	if err != nil {
-		return upstreamIdentityData{}, err
+func providerConfigured(provider model.UpstreamProvider) bool {
+	if provider.Kind == "telegram" {
+		return provider.ClientSecretEncrypted != ""
 	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "FZ-SSO/1.0")
-	resp, err := client.Do(req)
-	if err != nil {
-		return upstreamIdentityData{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return upstreamIdentityData{}, fmt.Errorf("userinfo status %d", resp.StatusCode)
-	}
-	decoder := json.NewDecoder(io.LimitReader(resp.Body, 1<<20))
-	decoder.UseNumber()
-	var raw map[string]any
-	if err := decoder.Decode(&raw); err != nil {
-		return upstreamIdentityData{}, err
-	}
-	id := firstString(raw, "sub", "id", "user_id")
-	name := firstString(raw, "preferred_username", "username", "login", "global_name", "name")
-	email := firstString(raw, "email")
-	avatar := firstString(raw, "picture", "avatar_url", "avatar")
-	verified, _ := raw["email_verified"].(bool)
-	if provider.Kind == "github" && email != "" {
-		verified = true
-	}
-	if id == "" {
-		return upstreamIdentityData{}, errors.New("missing upstream subject")
-	}
-	return upstreamIdentityData{ID: id, Name: name, Email: email, Avatar: avatar, EmailVerified: verified}, nil
+	return provider.ClientID != "" && provider.ClientSecretEncrypted != ""
 }
 
-func exchangeWeChat(ctx context.Context, provider model.UpstreamProvider, secret, code string) (string, string, error) {
-	requestURL := provider.TokenURL + "?appid=" + url.QueryEscape(provider.ClientID) + "&secret=" + url.QueryEscape(secret) + "&code=" + url.QueryEscape(code) + "&grant_type=authorization_code"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
-	if err != nil {
-		return "", "", err
+func (s *Server) provisionUpstreamUser(provider model.UpstreamProvider, identity upstream.Identity) (model.User, error) {
+	usernameSource := identity.Username
+	if usernameSource == "" {
+		usernameSource = identity.Name
 	}
-	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
-	if err != nil {
-		return "", "", err
-	}
-	defer resp.Body.Close()
-	var result struct {
-		AccessToken  string `json:"access_token"`
-		OpenID       string `json:"openid"`
-		ErrorCode    int    `json:"errcode"`
-		ErrorMessage string `json:"errmsg"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result); err != nil {
-		return "", "", err
-	}
-	if result.AccessToken == "" || result.OpenID == "" {
-		return "", "", fmt.Errorf("wechat token error %d: %s", result.ErrorCode, result.ErrorMessage)
-	}
-	return result.AccessToken, result.OpenID, nil
-}
-
-func fetchWeChatIdentity(ctx context.Context, provider model.UpstreamProvider, accessToken, openID string) (upstreamIdentityData, error) {
-	requestURL := provider.UserInfoURL + "?access_token=" + url.QueryEscape(accessToken) + "&openid=" + url.QueryEscape(openID) + "&lang=zh_CN"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
-	if err != nil {
-		return upstreamIdentityData{}, err
-	}
-	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
-	if err != nil {
-		return upstreamIdentityData{}, err
-	}
-	defer resp.Body.Close()
-	var result struct {
-		OpenID       string `json:"openid"`
-		Nickname     string `json:"nickname"`
-		HeadImageURL string `json:"headimgurl"`
-		ErrorCode    int    `json:"errcode"`
-		ErrorMessage string `json:"errmsg"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result); err != nil {
-		return upstreamIdentityData{}, err
-	}
-	if result.OpenID == "" {
-		return upstreamIdentityData{}, fmt.Errorf("wechat userinfo error %d: %s", result.ErrorCode, result.ErrorMessage)
-	}
-	return upstreamIdentityData{ID: result.OpenID, Name: result.Nickname, Avatar: result.HeadImageURL}, nil
-}
-
-func (s *Server) provisionUpstreamUser(provider model.UpstreamProvider, identity upstreamIdentityData) (model.User, error) {
-	username := uniqueUsernameBase(identity.Name, provider.Kind, identity.ID)
+	username := uniqueUsernameBase(usernameSource, provider.Kind, identity.Subject)
 	base := username
 	for index := 0; ; index++ {
 		var count int64
@@ -416,9 +328,9 @@ func (s *Server) provisionUpstreamUser(provider model.UpstreamProvider, identity
 		}
 		username = fmt.Sprintf("%s%d", base, index+1)
 	}
-	email := strings.ToLower(identity.Email)
+	email := strings.ToLower(strings.TrimSpace(identity.Email))
 	if !identity.EmailVerified || !validEmail(email) {
-		email = fmt.Sprintf("%s-%s@users.invalid", provider.Kind, security.HashToken(identity.ID)[:16])
+		email = fmt.Sprintf("%s-%s@users.invalid", provider.Kind, security.HashToken(identity.Subject)[:16])
 	}
 	randomPassword, err := security.RandomToken(32)
 	if err != nil {
@@ -428,49 +340,65 @@ func (s *Server) provisionUpstreamUser(provider model.UpstreamProvider, identity
 	if err != nil {
 		return model.User{}, err
 	}
-	user := model.User{Username: username, Email: email, PasswordHash: hash, DisplayName: identity.Name, AvatarURL: identity.Avatar, Locale: "zh-CN", SecurityEmailEnabled: true, Role: "user", Status: "active"}
-	if identity.EmailVerified {
+	displayName := strings.TrimSpace(identity.Name)
+	if displayName == "" {
+		displayName = strings.TrimSpace(identity.Username)
+	}
+	if displayName == "" {
+		displayName = username
+	}
+	user := model.User{
+		Username: username, Email: email, PasswordHash: hash, PasswordConfigured: false,
+		DisplayName: displayName, AvatarURL: strings.TrimSpace(identity.AvatarURL), Locale: "zh-CN",
+		SecurityEmailEnabled: true, Role: "user", Status: "active",
+	}
+	if identity.EmailVerified && validEmail(email) {
 		now := time.Now()
 		user.EmailVerifiedAt = &now
 	}
-	if err := s.DB.Create(&user).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&user).Error; err != nil {
+			return err
+		}
+		return tx.Model(&user).Update("password_configured", false).Error
+	}); err != nil {
 		return model.User{}, err
 	}
+	user.PasswordConfigured = false
 	return user, nil
 }
 
-func discoverOIDC(ctx context.Context, provider *model.UpstreamProvider) error {
-	if provider.IssuerURL == "" {
-		return errors.New("OIDC issuer missing")
+func (s *Server) syncUpstreamProfile(user *model.User, identity upstream.Identity) error {
+	updates := map[string]any{}
+	if strings.TrimSpace(user.DisplayName) == "" {
+		if name := strings.TrimSpace(identity.Name); name != "" {
+			updates["display_name"] = name
+		} else if username := strings.TrimSpace(identity.Username); username != "" {
+			updates["display_name"] = username
+		}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(provider.IssuerURL, "/")+"/.well-known/openid-configuration", nil)
-	if err != nil {
+	if strings.TrimSpace(user.AvatarURL) == "" && strings.TrimSpace(identity.AvatarURL) != "" {
+		updates["avatar_url"] = strings.TrimSpace(identity.AvatarURL)
+	}
+	if strings.HasSuffix(strings.ToLower(user.Email), "@users.invalid") && identity.EmailVerified && validEmail(identity.Email) {
+		verifiedEmail := strings.ToLower(strings.TrimSpace(identity.Email))
+		var count int64
+		if err := s.DB.Model(&model.User{}).Where("LOWER(email) = ? AND id <> ?", verifiedEmail, user.ID).Count(&count).Error; err != nil {
+			return err
+		}
+		if count == 0 {
+			now := time.Now()
+			updates["email"] = verifiedEmail
+			updates["email_verified_at"] = &now
+		}
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	if err := s.DB.Model(user).Updates(updates).Error; err != nil {
 		return err
 	}
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("discovery status %d", resp.StatusCode)
-	}
-	var doc struct {
-		AuthorizationEndpoint string `json:"authorization_endpoint"`
-		TokenEndpoint         string `json:"token_endpoint"`
-		UserInfoEndpoint      string `json:"userinfo_endpoint"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&doc); err != nil {
-		return err
-	}
-	if !absoluteHTTPSOrLocal(doc.AuthorizationEndpoint) || !absoluteHTTPSOrLocal(doc.TokenEndpoint) || !absoluteHTTPSOrLocal(doc.UserInfoEndpoint) {
-		return errors.New("invalid OIDC endpoints")
-	}
-	provider.AuthorizationURL = doc.AuthorizationEndpoint
-	provider.TokenURL = doc.TokenEndpoint
-	provider.UserInfoURL = doc.UserInfoEndpoint
-	return nil
+	return s.DB.First(user, user.ID).Error
 }
 
 var usernameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
@@ -489,35 +417,9 @@ func uniqueUsernameBase(name, provider, id string) string {
 	return value
 }
 
-func firstString(values map[string]any, keys ...string) string {
-	for _, key := range keys {
-		if value, ok := values[key]; ok {
-			switch typed := value.(type) {
-			case string:
-				if typed != "" {
-					return typed
-				}
-			case json.Number:
-				return typed.String()
-			case float64:
-				return fmt.Sprintf("%.0f", typed)
-			}
-		}
-	}
-	return ""
-}
-
 func safeReturnTo(value string) string {
 	if value == "" || !strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") {
 		return "/dashboard"
 	}
 	return value
-}
-
-func absoluteHTTPSOrLocal(raw string) bool {
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
-		return false
-	}
-	return u.Scheme == "https" || (u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost"))
 }

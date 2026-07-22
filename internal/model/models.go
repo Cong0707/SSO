@@ -14,6 +14,7 @@ type User struct {
 	Username             string         `gorm:"size:64;uniqueIndex;not null" json:"username"`
 	Email                string         `gorm:"size:254;uniqueIndex;not null" json:"email"`
 	PasswordHash         string         `gorm:"size:512;not null" json:"-"`
+	PasswordConfigured   bool           `gorm:"not null;default:true" json:"password_configured"`
 	DisplayName          string         `gorm:"size:100" json:"display_name"`
 	AvatarURL            string         `gorm:"size:1024" json:"avatar_url"`
 	Locale               string         `gorm:"size:12;not null" json:"locale"`
@@ -95,18 +96,6 @@ type PersonalAccessToken struct {
 	RevokedAt  *time.Time `gorm:"index" json:"revoked_at"`
 }
 
-type InviteCode struct {
-	ID         uint64     `gorm:"primaryKey" json:"id"`
-	CreatedAt  time.Time  `json:"created_at"`
-	CreatorID  uint64     `gorm:"not null;index" json:"-"`
-	Prefix     string     `gorm:"size:24;not null;index" json:"prefix"`
-	CodeHash   string     `gorm:"size:64;uniqueIndex;not null" json:"-"`
-	MaxUses    int        `gorm:"not null" json:"max_uses"`
-	Uses       int        `gorm:"not null" json:"uses"`
-	ExpiresAt  *time.Time `gorm:"index" json:"expires_at"`
-	DisabledAt *time.Time `gorm:"index" json:"disabled_at"`
-}
-
 type AuditEvent struct {
 	ID        uint64    `gorm:"primaryKey" json:"id"`
 	CreatedAt time.Time `gorm:"index" json:"created_at"`
@@ -138,6 +127,7 @@ type UpstreamProvider struct {
 	AuthorizationURL      string     `gorm:"size:2048" json:"authorization_url"`
 	TokenURL              string     `gorm:"size:2048" json:"token_url"`
 	UserInfoURL           string     `gorm:"size:2048" json:"user_info_url"`
+	EmailInfoURL          string     `gorm:"size:2048" json:"email_info_url"`
 	Scopes                string     `gorm:"size:512" json:"scopes"`
 	Enabled               bool       `gorm:"not null" json:"enabled"`
 	DisabledAt            *time.Time `json:"disabled_at"`
@@ -168,6 +158,20 @@ type UpstreamOAuthState struct {
 	UsedAt                *time.Time `gorm:"index" json:"-"`
 }
 
+// OAuthTokenRecord stores OAuth2 authorization codes and tokens in the primary
+// database so every application replica observes the same state. Raw token
+// values are never persisted; PayloadEncrypted contains the encrypted oauth2
+// token model and the lookup columns contain SHA-256 digests.
+type OAuthTokenRecord struct {
+	ID               uint64    `gorm:"primaryKey" json:"-"`
+	CreatedAt        time.Time `json:"-"`
+	CodeHash         string    `gorm:"size:64;index" json:"-"`
+	AccessHash       string    `gorm:"size:64;index" json:"-"`
+	RefreshHash      string    `gorm:"size:64;index" json:"-"`
+	PayloadEncrypted string    `gorm:"type:text;not null" json:"-"`
+	ExpiresAt        time.Time `gorm:"not null;index" json:"-"`
+}
+
 func Migrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&User{},
@@ -176,11 +180,11 @@ func Migrate(db *gorm.DB) error {
 		&Grant{},
 		&AuthorizationLog{},
 		&PersonalAccessToken{},
-		&InviteCode{},
 		&AuditEvent{},
 		&EmailVerificationToken{},
 		&UpstreamProvider{},
 		&UpstreamIdentity{},
 		&UpstreamOAuthState{},
+		&OAuthTokenRecord{},
 	)
 }

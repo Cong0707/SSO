@@ -18,10 +18,9 @@ import (
 var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{2,31}$`)
 
 type registerRequest struct {
-	Username   string `json:"username"`
-	Email      string `json:"email"`
-	Password   string `json:"password"`
-	InviteCode string `json:"invite_code"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 func (s *Server) register(c *gin.Context) {
@@ -56,21 +55,6 @@ func (s *Server) register(c *gin.Context) {
 
 	var user model.User
 	err = s.DB.Transaction(func(tx *gorm.DB) error {
-		if s.Cfg.InviteRequired || input.InviteCode != "" {
-			if input.InviteCode == "" {
-				return errors.New("请输入邀请码")
-			}
-			var invite model.InviteCode
-			if err := tx.Where("code_hash = ?", security.HashToken(input.InviteCode)).First(&invite).Error; err != nil {
-				return errors.New("邀请码无效")
-			}
-			if invite.DisabledAt != nil || (invite.ExpiresAt != nil && invite.ExpiresAt.Before(time.Now())) || (invite.MaxUses > 0 && invite.Uses >= invite.MaxUses) {
-				return errors.New("邀请码已失效")
-			}
-			if err := tx.Model(&invite).UpdateColumn("uses", gorm.Expr("uses + ?", 1)).Error; err != nil {
-				return err
-			}
-		}
 		var count int64
 		if err := tx.Model(&model.User{}).Count(&count).Error; err != nil {
 			return err
@@ -79,7 +63,7 @@ func (s *Server) register(c *gin.Context) {
 		if count == 0 {
 			role = "admin"
 		}
-		user = model.User{Username: input.Username, Email: input.Email, PasswordHash: passwordHash, DisplayName: input.Username, Locale: "zh-CN", SecurityEmailEnabled: true, Role: role, Status: "active"}
+		user = model.User{Username: input.Username, Email: input.Email, PasswordHash: passwordHash, PasswordConfigured: true, DisplayName: input.Username, Locale: "zh-CN", SecurityEmailEnabled: true, Role: role, Status: "active"}
 		if err := tx.Create(&user).Error; err != nil {
 			if strings.Contains(strings.ToLower(err.Error()), "unique") || strings.Contains(strings.ToLower(err.Error()), "duplicate") {
 				return errors.New("用户名或邮箱已被使用")
@@ -114,7 +98,7 @@ func (s *Server) login(c *gin.Context) {
 	}
 	identifier := strings.ToLower(strings.TrimSpace(input.Identifier))
 	var user model.User
-	if err := s.DB.Where("LOWER(username) = ? OR LOWER(email) = ?", identifier, identifier).First(&user).Error; err != nil || !security.VerifyPassword(user.PasswordHash, input.Password) {
+	if err := s.DB.Where("LOWER(username) = ? OR LOWER(email) = ?", identifier, identifier).First(&user).Error; err != nil || !user.PasswordConfigured || !security.VerifyPassword(user.PasswordHash, input.Password) {
 		if user.ID != 0 {
 			s.audit(c, "login.failed", user.ID, "")
 		}

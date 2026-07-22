@@ -27,6 +27,7 @@ import {
   Link2,
   LogOut,
   Menu,
+  MessageCircle,
   Moon,
   MoreHorizontal,
   Plus,
@@ -54,6 +55,7 @@ type User = {
   locale: string;
   email_verified: boolean;
   mfa_enabled: boolean;
+  password_configured: boolean;
   security_email_enabled: boolean;
   created_at: string;
   last_login_at?: string;
@@ -107,8 +109,8 @@ const copy = {
     pats: "个人访问令牌（PAT）",
     audit: "安全活动",
     danger: "危险操作",
-    invite: "邀请码",
     providers: "上游接入商",
+    devices: "活跃设备",
     authorized: "授权",
     revoke: "撤销",
     delete: "删除",
@@ -164,8 +166,8 @@ const copy = {
     pats: "Personal access tokens",
     audit: "Security activity",
     danger: "Danger zone",
-    invite: "Invite codes",
     providers: "Upstream providers",
+    devices: "Active devices",
     authorized: "Authorized",
     revoke: "Revoke",
     delete: "Delete",
@@ -616,7 +618,6 @@ function AuthPage(props: {
     username: "",
     email: "",
     password: "",
-    invite_code: "",
     code: "",
   });
   const [busy, setBusy] = useState(false);
@@ -628,6 +629,7 @@ function AuthPage(props: {
       .catch(() => undefined);
   }, []);
   const login = props.mode === "login";
+  const requestedReturnTo = params.get("redirect") || "/dashboard";
   async function submit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
@@ -647,7 +649,6 @@ function AuthPage(props: {
                   username: form.username,
                   email: form.email,
                   password: form.password,
-                  invite_code: form.invite_code,
                 },
           ),
         },
@@ -699,6 +700,7 @@ function AuthPage(props: {
                 onChange={(event) =>
                   setForm({ ...form, username: event.target.value })
                 }
+                autoComplete="username"
                 required
               />
               <Input
@@ -708,6 +710,7 @@ function AuthPage(props: {
                 onChange={(event) =>
                   setForm({ ...form, email: event.target.value })
                 }
+                autoComplete="email"
                 required
               />
             </>
@@ -727,18 +730,10 @@ function AuthPage(props: {
             <Input
               label="MFA 验证码（如已启用）"
               inputMode="numeric"
+              autoComplete="one-time-code"
               value={form.code}
               onChange={(event) =>
                 setForm({ ...form, code: event.target.value })
-              }
-            />
-          )}
-          {!login && (
-            <Input
-              label="邀请码（可选）"
-              value={form.invite_code}
-              onChange={(event) =>
-                setForm({ ...form, invite_code: event.target.value })
               }
             />
           )}
@@ -756,31 +751,47 @@ function AuthPage(props: {
             {login ? props.t("signIn") : props.t("signUp")}
           </Button>
         </form>
-        {login &&
-          providers.filter((provider) => provider.enabled).length > 0 && (
-            <div className="auth-providers">
-              <div className="divider">
-                <span>或使用接入商</span>
-              </div>
-              {providers
-                .filter(
-                  (provider) =>
-                    provider.enabled &&
-                    provider.kind !== "telegram" &&
-                    provider.kind !== "wechat",
-                )
-                .map((provider) => (
+        {providers.length > 0 && (
+          <div className="auth-providers">
+            <div className="divider">
+              <span>第三方登录 / 注册</span>
+            </div>
+            <div className="provider-grid">
+              {providers.map((provider) =>
+                provider.enabled && provider.kind !== "telegram" ? (
                   <a
                     className="provider-button"
                     key={provider.kind}
-                    href={`/oauth/upstream/${provider.kind}/start?return_to=/dashboard`}
+                    href={`/oauth/upstream/${provider.kind}/start?return_to=${encodeURIComponent(requestedReturnTo)}`}
                   >
                     <ProviderIcon kind={provider.kind} />
-                    {provider.display_name}
+                    <span>{provider.display_name}</span>
+                    <small>登录 / 注册</small>
                   </a>
-                ))}
+                ) : (
+                  <div
+                    className="provider-button disabled"
+                    key={provider.kind}
+                    title={
+                      provider.kind === "telegram"
+                        ? "需要配置 Telegram Login Widget"
+                        : "管理员尚未配置此登录方式"
+                    }
+                  >
+                    <ProviderIcon kind={provider.kind} />
+                    <span>{provider.display_name}</span>
+                    <small>
+                      {provider.kind === "telegram" ? "需要 Widget" : "未配置"}
+                    </small>
+                  </div>
+                ),
+              )}
             </div>
-          )}
+            <p className="provider-hint">
+              首次使用会自动创建账号并导入用户名、已验证邮箱和头像，之后可在个人资料中修改。
+            </p>
+          </div>
+        )}
         <div className="auth-switch">
           {login ? (
             <>
@@ -804,6 +815,8 @@ function ProviderIcon({ kind }: { kind: string }) {
   if (kind === "github") return <Github size={17} />;
   if (kind === "discord") return <Users size={17} />;
   if (kind === "linuxdo") return <Globe2 size={17} />;
+  if (kind === "telegram") return <Send size={17} />;
+  if (kind === "wechat") return <MessageCircle size={17} />;
   return <Shield size={17} />;
 }
 
@@ -817,7 +830,7 @@ function DashboardPage({
   const [data, setData] = useState<{
     apps: number;
     authorizations: number;
-    invites: number;
+    devices: number;
     providers: number;
     recent_authorizations: Array<{
       id: number;
@@ -853,8 +866,8 @@ function DashboardPage({
         />
         <Stat
           icon={<KeyRound />}
-          label={t("invite")}
-          value={data?.invites ?? 0}
+          label={t("devices")}
+          value={data?.devices ?? 0}
         />
         <Stat
           icon={<Globe2 />}
@@ -1514,6 +1527,9 @@ function ProfilePage({
         body: JSON.stringify(password),
       });
       setPassword({ current_password: "", new_password: "" });
+      const updatedProfile = { ...profile, password_configured: true };
+      setProfile(updatedProfile);
+      setUser(updatedProfile);
       show("密码已修改，其他设备已退出", "success");
       load();
     } catch (error) {
@@ -1678,7 +1694,7 @@ function ProfilePage({
               }
               hint={profile.email_verified ? "已验证" : "邮箱还没有验证"}
             />
-            {profile.email !== savedEmail && (
+            {profile.email !== savedEmail && profile.password_configured && (
               <Input
                 label="当前密码"
                 type="password"
@@ -1808,18 +1824,24 @@ function ProfilePage({
         </Panel>
         <Panel title={t("changePassword")}>
           <form onSubmit={changePassword} className="form-stack">
-            <Input
-              label={t("currentPassword")}
-              type="password"
-              value={password.current_password}
-              onChange={(event) =>
-                setPassword({
-                  ...password,
-                  current_password: event.target.value,
-                })
-              }
-              required
-            />
+            {profile.password_configured ? (
+              <Input
+                label={t("currentPassword")}
+                type="password"
+                value={password.current_password}
+                onChange={(event) =>
+                  setPassword({
+                    ...password,
+                    current_password: event.target.value,
+                  })
+                }
+                required
+              />
+            ) : (
+              <p className="form-hint">
+                这是第三方登录账号，首次设置密码无需输入旧密码。
+              </p>
+            )}
             <Input
               label={t("newPassword")}
               type="password"
@@ -1856,15 +1878,20 @@ function ProfilePage({
           )}
           {profile.mfa_enabled && (
             <form className="form-stack" onSubmit={disableMFA}>
-              <Input
-                label={t("currentPassword")}
-                type="password"
-                value={mfaDisable.password}
-                onChange={(event) =>
-                  setMfaDisable({ ...mfaDisable, password: event.target.value })
-                }
-                required
-              />
+              {profile.password_configured && (
+                <Input
+                  label={t("currentPassword")}
+                  type="password"
+                  value={mfaDisable.password}
+                  onChange={(event) =>
+                    setMfaDisable({
+                      ...mfaDisable,
+                      password: event.target.value,
+                    })
+                  }
+                  required
+                />
+              )}
               <Input
                 label="MFA 验证码或备用码"
                 value={mfaDisable.code}
@@ -1993,13 +2020,15 @@ function ProfilePage({
               <span>此操作不可撤销，账户和所有数据都会被永久删除。</span>
             </div>
             <div className="danger-actions">
-              <Input
-                type="password"
-                placeholder={t("currentPassword")}
-                value={deletePassword}
-                onChange={(event) => setDeletePassword(event.target.value)}
-                required
-              />
+              {profile.password_configured && (
+                <Input
+                  type="password"
+                  placeholder={t("currentPassword")}
+                  value={deletePassword}
+                  onChange={(event) => setDeletePassword(event.target.value)}
+                  required
+                />
+              )}
               <Button
                 type="submit"
                 variant="danger"

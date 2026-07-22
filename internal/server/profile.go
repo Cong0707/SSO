@@ -47,7 +47,7 @@ func (s *Server) updateProfile(c *gin.Context) {
 		input.Locale = "zh-CN"
 	}
 	if input.Email != "" && input.Email != user.Email {
-		if !security.VerifyPassword(user.PasswordHash, input.CurrentPassword) {
+		if user.PasswordConfigured && !security.VerifyPassword(user.PasswordHash, input.CurrentPassword) {
 			s.serveError(c, http.StatusUnauthorized, "更换邮箱前请确认当前密码")
 			return
 		}
@@ -80,7 +80,7 @@ func (s *Server) changePassword(c *gin.Context) {
 		return
 	}
 	user := s.user(c)
-	if !security.VerifyPassword(user.PasswordHash, input.CurrentPassword) {
+	if user.PasswordConfigured && !security.VerifyPassword(user.PasswordHash, input.CurrentPassword) {
 		s.serveError(c, http.StatusUnauthorized, "当前密码错误")
 		return
 	}
@@ -95,7 +95,7 @@ func (s *Server) changePassword(c *gin.Context) {
 	}
 	currentSession := s.session(c)
 	err = s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(user).Update("password_hash", hash).Error; err != nil {
+		if err := tx.Model(user).Updates(map[string]any{"password_hash": hash, "password_configured": true}).Error; err != nil {
 			return err
 		}
 		now := time.Now()
@@ -105,7 +105,12 @@ func (s *Server) changePassword(c *gin.Context) {
 		s.serveError(c, http.StatusInternalServerError, "修改密码失败")
 		return
 	}
-	s.audit(c, "password.changed", user.ID, "")
+	action := "password.changed"
+	if !user.PasswordConfigured {
+		action = "password.configured"
+	}
+	user.PasswordConfigured = true
+	s.audit(c, action, user.ID, "")
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
@@ -173,7 +178,7 @@ func (s *Server) disableMFA(c *gin.Context) {
 		return
 	}
 	user := s.user(c)
-	if !security.VerifyPassword(user.PasswordHash, input.Password) || !s.verifyMFA(user, strings.TrimSpace(input.Code)) {
+	if (user.PasswordConfigured && !security.VerifyPassword(user.PasswordHash, input.Password)) || !s.verifyMFA(user, strings.TrimSpace(input.Code)) {
 		s.serveError(c, http.StatusUnauthorized, "密码或验证码错误")
 		return
 	}
@@ -316,7 +321,7 @@ func (s *Server) deleteAccount(c *gin.Context) {
 	var input struct {
 		Password string `json:"password"`
 	}
-	if err := c.ShouldBindJSON(&input); err != nil || !security.VerifyPassword(s.user(c).PasswordHash, input.Password) {
+	if err := c.ShouldBindJSON(&input); err != nil || (s.user(c).PasswordConfigured && !security.VerifyPassword(s.user(c).PasswordHash, input.Password)) {
 		s.serveError(c, http.StatusUnauthorized, "密码错误")
 		return
 	}
@@ -326,9 +331,6 @@ func (s *Server) deleteAccount(c *gin.Context) {
 			if err := tx.Unscoped().Where("user_id = ?", user.ID).Delete(entry).Error; err != nil {
 				return err
 			}
-		}
-		if err := tx.Unscoped().Where("creator_id = ?", user.ID).Delete(&model.InviteCode{}).Error; err != nil {
-			return err
 		}
 		if err := tx.Unscoped().Where("owner_id = ?", user.ID).Delete(&model.OAuthApplication{}).Error; err != nil {
 			return err
