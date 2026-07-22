@@ -3,6 +3,7 @@ data/
 web/node_modules/
 web/dist/
 web/.rsbuild-cache/
+web/tsconfig.tsbuildinfo
 coverage/
 *.log
 *.exe
