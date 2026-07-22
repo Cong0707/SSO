@@ -27,7 +27,7 @@ services:
       SSO_COOKIE_SECURE: ${SSO_COOKIE_SECURE:-false}
       SSO_REGISTRATION_ENABLED: ${SSO_REGISTRATION_ENABLED:-true}
       SSO_DATABASE_DRIVER: postgres
-      SSO_DATABASE_DSN: host=postgres user=${POSTGRES_USER:-sso} password=${POSTGRES_PASSWORD:-sso-dev-password} dbname=${POSTGRES_DB:-sso} port=5432 sslmode=disable TimeZone=UTC
+      SSO_DATABASE_DSN: "host=postgres user=${POSTGRES_USER:-sso} password=${POSTGRES_PASSWORD:-sso-dev-password} dbname=${POSTGRES_DB:-sso} port=5432 sslmode=disable TimeZone=UTC"
       SSO_DATA_DIR: /app/data
       SSO_MASTER_KEY_FILE: /app/data/master.key
       SSO_OIDC_SIGNING_KEY_FILE: /app/data/oidc-signing.pem

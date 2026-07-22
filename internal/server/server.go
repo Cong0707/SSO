@@ -376,6 +376,9 @@ func loadSigningKey(path string, allowGenerate bool) (*rsa.PrivateKey, error) {
 		return nil, fmt.Errorf("generate OIDC signing key: %w", err)
 	}
 	data := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return nil, err
 	}
