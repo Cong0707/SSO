@@ -1,0 +1,10 @@
+data/
+.env
+web/node_modules/
+web/dist/
+web/.rsbuild-cache/
+coverage/
+*.log
+*.exe
+output/
+.playwright-cli/
