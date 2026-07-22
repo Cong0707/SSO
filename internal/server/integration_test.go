@@ -142,6 +142,10 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 	if userinfo.StatusCode != http.StatusOK || claims["preferred_username"] != "alice" {
 		t.Fatalf("unexpected userinfo status=%d claims=%#v", userinfo.StatusCode, claims)
 	}
+	deleted := doJSON(t, client, http.MethodDelete, httpServer.URL+"/api/profile", csrf, map[string]any{"password": "Password123"})
+	if deleted["success"] != true {
+		t.Fatalf("expected account deletion to succeed: %#v", deleted)
+	}
 }
 
 func doJSON(t *testing.T, client *http.Client, method, endpoint, csrf string, body any) map[string]any {

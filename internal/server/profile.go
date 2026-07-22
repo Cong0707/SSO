@@ -322,10 +322,13 @@ func (s *Server) deleteAccount(c *gin.Context) {
 	}
 	user := s.user(c)
 	err := s.DB.Transaction(func(tx *gorm.DB) error {
-		for _, entry := range []any{&model.Session{}, &model.Grant{}, &model.AuthorizationLog{}, &model.PersonalAccessToken{}, &model.InviteCode{}, &model.AuditEvent{}, &model.UpstreamIdentity{}, &model.EmailVerificationToken{}} {
+		for _, entry := range []any{&model.Session{}, &model.Grant{}, &model.AuthorizationLog{}, &model.PersonalAccessToken{}, &model.AuditEvent{}, &model.UpstreamIdentity{}, &model.EmailVerificationToken{}} {
 			if err := tx.Unscoped().Where("user_id = ?", user.ID).Delete(entry).Error; err != nil {
 				return err
 			}
+		}
+		if err := tx.Unscoped().Where("creator_id = ?", user.ID).Delete(&model.InviteCode{}).Error; err != nil {
+			return err
 		}
 		if err := tx.Unscoped().Where("owner_id = ?", user.ID).Delete(&model.OAuthApplication{}).Error; err != nil {
 			return err
