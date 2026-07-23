@@ -77,6 +77,12 @@ func (s *Server) mergeAccounts(firstID, secondID uint64) (model.User, bool, erro
 		if err := tx.Model(&source).Updates(map[string]any{"status": "merged", "merged_into_user_id": targetID, "deactivated_at": &now}).Error; err != nil {
 			return err
 		}
+		if err := tx.Model(&model.AccountAlias{}).Where("canonical_user_id = ?", sourceID).Update("canonical_user_id", targetID).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&model.AccountAlias{SourceUserID: sourceID, CanonicalUserID: targetID, CreatedAt: now}).Error; err != nil {
+			return err
+		}
 		if err := tx.Model(&model.Session{}).Where("user_id IN ? AND revoked_at IS NULL", []uint64{targetID, sourceID}).Update("revoked_at", &now).Error; err != nil {
 			return err
 		}
@@ -84,6 +90,15 @@ func (s *Server) mergeAccounts(firstID, secondID uint64) (model.User, bool, erro
 			return err
 		}
 		if err := tx.Model(&model.Grant{}).Where("user_id = ? AND revoked_at IS NULL", sourceID).Update("revoked_at", &now).Error; err != nil {
+			return err
+		}
+		if err := revokeOAuthTokens(tx, "user_id IN ?", []uint64{targetID, sourceID}); err != nil {
+			return err
+		}
+		if err := s.recordLifecycleEvent(tx, sourceID, "account.merged", map[string]any{"canonical_sub": fmt.Sprintf("%d", targetID)}); err != nil {
+			return err
+		}
+		if err := s.recordLifecycleEvent(tx, targetID, "account.identities_merged", map[string]any{"source_sub": fmt.Sprintf("%d", sourceID)}); err != nil {
 			return err
 		}
 		if err := tx.Create(&model.AuditEvent{UserID: targetID, Action: "account.merged", Metadata: fmt.Sprintf("source_user_id=%d", sourceID)}).Error; err != nil {

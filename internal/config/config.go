@@ -18,63 +18,77 @@ type Config struct {
 	Issuer         string
 	DatabaseDriver string
 	DatabaseDSN    string
+	// AutoMigrate is intentionally development-only. Production schema changes
+	// are applied by the dedicated migration Job before application Pods start.
+	AutoMigrate bool
 	// OAuthTokenDB is retained for source compatibility with older test and
 	// deployment code. OAuth tokens are now stored in the primary database.
-	OAuthTokenDB        string
-	WebDir              string
-	DataDir             string
-	MasterKeyFile       string
-	OIDCSigningKeyFile  string
-	CookieSecure        bool
-	SessionTTL          time.Duration
-	RegistrationEnabled bool
-	EmailDebug          bool
-	AllowKeyGeneration  bool
-	TrustedProxies      []string
-	MasterKey           []byte
-	RateLimitEnabled    bool
-	RateLimitIdentify   int
-	RateLimitLogin      int
-	RateLimitEmail      int
-	RateLimitOAuthToken int
-	RateLimitSensitive  int
-	RedisAddr           string
-	RedisPassword       string
-	RedisDB             int
-	RedisTLS            bool
-	RedisTLSServerName  string
-	RedisKeyPrefix      string
+	OAuthTokenDB           string
+	WebDir                 string
+	DataDir                string
+	MasterKeyFile          string
+	OIDCSigningKeyFile     string
+	CookieSecure           bool
+	SessionTTL             time.Duration
+	RegistrationEnabled    bool
+	EmailDebug             bool
+	AllowKeyGeneration     bool
+	TrustedProxies         []string
+	MasterKey              []byte
+	RateLimitEnabled       bool
+	RateLimitIdentify      int
+	RateLimitLogin         int
+	RateLimitEmail         int
+	RateLimitOAuthToken    int
+	RateLimitSensitive     int
+	RedisAddr              string
+	RedisPassword          string
+	RedisDB                int
+	RedisTLS               bool
+	RedisTLSServerName     string
+	RedisKeyPrefix         string
+	BootstrapAdminEmails   []string
+	LifecycleWebhookURL    string
+	LifecycleWebhookSecret string
+	OutboxPollInterval     time.Duration
+	OutboxMaxAttempts      int
 }
 
 func Load() (Config, error) {
 	databaseDriver := strings.ToLower(env("SSO_DATABASE_DRIVER", "postgres"))
 	dataDir := env("SSO_DATA_DIR", filepath.FromSlash("data"))
 	cfg := Config{
-		Addr:                env("SSO_ADDR", ":8080"),
-		Issuer:              strings.TrimRight(env("SSO_ISSUER", "http://127.0.0.1:8080"), "/"),
-		DatabaseDriver:      databaseDriver,
-		DatabaseDSN:         env("SSO_DATABASE_DSN", "host=127.0.0.1 user=sso password=change-me dbname=sso port=5432 sslmode=disable TimeZone=UTC"),
-		WebDir:              env("SSO_WEB_DIR", filepath.FromSlash("web/dist")),
-		DataDir:             dataDir,
-		MasterKeyFile:       env("SSO_MASTER_KEY_FILE", filepath.Join(dataDir, "master.key")),
-		OIDCSigningKeyFile:  env("SSO_OIDC_SIGNING_KEY_FILE", filepath.Join(dataDir, "oidc-signing.pem")),
-		CookieSecure:        envBool("SSO_COOKIE_SECURE", false),
-		RegistrationEnabled: envBool("SSO_REGISTRATION_ENABLED", true),
-		EmailDebug:          envBool("SSO_EMAIL_DEBUG", databaseDriver == "sqlite" || databaseDriver == "sqlite3"),
-		AllowKeyGeneration:  envBool("SSO_ALLOW_KEY_GENERATION", databaseDriver == "sqlite" || databaseDriver == "sqlite3"),
-		TrustedProxies:      envList("SSO_TRUSTED_PROXIES"),
-		RateLimitEnabled:    envBool("SSO_RATE_LIMIT_ENABLED", databaseDriver != "sqlite" && databaseDriver != "sqlite3"),
-		RateLimitIdentify:   envInt("SSO_RATE_LIMIT_IDENTIFY", 30),
-		RateLimitLogin:      envInt("SSO_RATE_LIMIT_LOGIN", 10),
-		RateLimitEmail:      envInt("SSO_RATE_LIMIT_EMAIL", 5),
-		RateLimitOAuthToken: envInt("SSO_RATE_LIMIT_OAUTH_TOKEN", 120),
-		RateLimitSensitive:  envInt("SSO_RATE_LIMIT_SENSITIVE", 60),
-		RedisAddr:           strings.TrimSpace(os.Getenv("SSO_REDIS_ADDR")),
-		RedisPassword:       os.Getenv("SSO_REDIS_PASSWORD"),
-		RedisDB:             envNonNegativeInt("SSO_REDIS_DB", 0),
-		RedisTLS:            envBool("SSO_REDIS_TLS", false),
-		RedisTLSServerName:  strings.TrimSpace(os.Getenv("SSO_REDIS_TLS_SERVER_NAME")),
-		RedisKeyPrefix:      strings.Trim(strings.TrimSpace(env("SSO_REDIS_KEY_PREFIX", "xem-sso")), ":"),
+		Addr:                   env("SSO_ADDR", ":8080"),
+		Issuer:                 strings.TrimRight(env("SSO_ISSUER", "http://127.0.0.1:8080"), "/"),
+		DatabaseDriver:         databaseDriver,
+		DatabaseDSN:            env("SSO_DATABASE_DSN", "host=127.0.0.1 user=sso password=change-me dbname=sso port=5432 sslmode=disable TimeZone=UTC"),
+		AutoMigrate:            envBool("SSO_AUTO_MIGRATE", databaseDriver == "sqlite" || databaseDriver == "sqlite3"),
+		WebDir:                 env("SSO_WEB_DIR", filepath.FromSlash("web/dist")),
+		DataDir:                dataDir,
+		MasterKeyFile:          env("SSO_MASTER_KEY_FILE", filepath.Join(dataDir, "master.key")),
+		OIDCSigningKeyFile:     env("SSO_OIDC_SIGNING_KEY_FILE", filepath.Join(dataDir, "oidc-signing.pem")),
+		CookieSecure:           envBool("SSO_COOKIE_SECURE", false),
+		RegistrationEnabled:    envBool("SSO_REGISTRATION_ENABLED", true),
+		EmailDebug:             envBool("SSO_EMAIL_DEBUG", databaseDriver == "sqlite" || databaseDriver == "sqlite3"),
+		AllowKeyGeneration:     envBool("SSO_ALLOW_KEY_GENERATION", databaseDriver == "sqlite" || databaseDriver == "sqlite3"),
+		TrustedProxies:         envList("SSO_TRUSTED_PROXIES"),
+		RateLimitEnabled:       envBool("SSO_RATE_LIMIT_ENABLED", databaseDriver != "sqlite" && databaseDriver != "sqlite3"),
+		RateLimitIdentify:      envInt("SSO_RATE_LIMIT_IDENTIFY", 30),
+		RateLimitLogin:         envInt("SSO_RATE_LIMIT_LOGIN", 10),
+		RateLimitEmail:         envInt("SSO_RATE_LIMIT_EMAIL", 5),
+		RateLimitOAuthToken:    envInt("SSO_RATE_LIMIT_OAUTH_TOKEN", 120),
+		RateLimitSensitive:     envInt("SSO_RATE_LIMIT_SENSITIVE", 60),
+		RedisAddr:              strings.TrimSpace(os.Getenv("SSO_REDIS_ADDR")),
+		RedisPassword:          os.Getenv("SSO_REDIS_PASSWORD"),
+		RedisDB:                envNonNegativeInt("SSO_REDIS_DB", 0),
+		RedisTLS:               envBool("SSO_REDIS_TLS", false),
+		RedisTLSServerName:     strings.TrimSpace(os.Getenv("SSO_REDIS_TLS_SERVER_NAME")),
+		RedisKeyPrefix:         strings.Trim(strings.TrimSpace(env("SSO_REDIS_KEY_PREFIX", "xem-sso")), ":"),
+		BootstrapAdminEmails:   normalizeEmails(envList("SSO_BOOTSTRAP_ADMIN_EMAILS")),
+		LifecycleWebhookURL:    strings.TrimSpace(os.Getenv("SSO_LIFECYCLE_WEBHOOK_URL")),
+		LifecycleWebhookSecret: os.Getenv("SSO_LIFECYCLE_WEBHOOK_SECRET"),
+		OutboxPollInterval:     envDuration("SSO_OUTBOX_POLL_INTERVAL", 5*time.Second),
+		OutboxMaxAttempts:      envInt("SSO_OUTBOX_MAX_ATTEMPTS", 12),
 	}
 
 	issuer, err := url.Parse(cfg.Issuer)
@@ -86,6 +100,15 @@ func Load() (Config, error) {
 	}
 	if cfg.RedisKeyPrefix == "" {
 		return Config{}, fmt.Errorf("SSO_REDIS_KEY_PREFIX must not be empty")
+	}
+	if cfg.LifecycleWebhookURL != "" {
+		endpoint, err := url.Parse(cfg.LifecycleWebhookURL)
+		if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" {
+			return Config{}, fmt.Errorf("SSO_LIFECYCLE_WEBHOOK_URL must be an absolute HTTPS URL")
+		}
+		if strings.TrimSpace(cfg.LifecycleWebhookSecret) == "" {
+			return Config{}, fmt.Errorf("SSO_LIFECYCLE_WEBHOOK_SECRET is required when lifecycle webhook is enabled")
+		}
 	}
 
 	cfg.SessionTTL, err = time.ParseDuration(env("SSO_SESSION_TTL", "720h"))
@@ -165,6 +188,35 @@ func envNonNegativeInt(name string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func envDuration(name string, fallback time.Duration) time.Duration {
+	value, ok := os.LookupEnv(name)
+	if !ok {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil || parsed < time.Second {
+		return fallback
+	}
+	return parsed
+}
+
+func normalizeEmails(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		email := strings.ToLower(strings.TrimSpace(value))
+		if email == "" {
+			continue
+		}
+		if _, ok := seen[email]; ok {
+			continue
+		}
+		seen[email] = struct{}{}
+		result = append(result, email)
+	}
+	return result
 }
 
 func loadOrCreateMasterKey(path string, allowGenerate bool) ([]byte, error) {

@@ -3,10 +3,9 @@ kind: Kustomization
 namespace: sso
 resources:
   - namespace.yaml
-  - postgres.yaml
-  - redis.yaml
   - sso-configmap.yaml
   - sso-pvc.yaml
   - sso-deployment.yaml
+  - sso-pdb.yaml
   - sso-service.yaml
   - network-policy.yaml

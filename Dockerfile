@@ -5,12 +5,14 @@ RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-FROM golang:1.26-alpine AS api-builder
+FROM golang:1.26.5-alpine AS api-builder
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/sso ./cmd/sso
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/sso-migrate ./cmd/migrate
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/sso-migrate-new-api ./cmd/migrate-new-api
 
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata \
@@ -18,6 +20,8 @@ RUN apk add --no-cache ca-certificates tzdata \
     && adduser -u 10001 -S -D -H -G sso sso
 WORKDIR /app
 COPY --from=api-builder /out/sso /app/sso
+COPY --from=api-builder /out/sso-migrate /app/sso-migrate
+COPY --from=api-builder /out/sso-migrate-new-api /app/sso-migrate-new-api
 COPY --from=web-builder /src/web/dist /app/web/dist
 RUN mkdir -p /app/data && chown -R sso:sso /app
 USER 10001:10001

@@ -1,69 +1,36 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: batch/v1
+kind: Job
 metadata:
-  name: sso
+  name: sso-schema-migrate
+  namespace: sso
 spec:
-  replicas: 2
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: sso
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 86400
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: sso
+        app.kubernetes.io/name: sso-migration
     spec:
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: DoNotSchedule
-          labelSelector:
-            matchLabels:
-              app.kubernetes.io/name: sso
+      restartPolicy: OnFailure
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
         runAsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
-        fsGroup: 10001
       containers:
-        - name: sso
+        - name: migrate
           image: ghcr.io/cong0707/sso:0.1.0@sha256:0000000000000000000000000000000000000000000000000000000000000000
           imagePullPolicy: Always
+          command: ["/app/sso-migrate"]
           envFrom:
             - configMapRef:
                 name: sso-config
             - secretRef:
                 name: sso-secrets
-          ports:
-            - name: http
-              containerPort: 8080
-          readinessProbe:
-            httpGet:
-              path: /readyz
-              port: http
-            initialDelaySeconds: 3
-            periodSeconds: 5
-            timeoutSeconds: 2
-          livenessProbe:
-            httpGet:
-              path: /livez
-              port: http
-            initialDelaySeconds: 15
-            periodSeconds: 10
-            timeoutSeconds: 2
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: "1"
-              memory: 512Mi
+          env:
+            - name: SSO_AUTO_MIGRATE
+              value: "false"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

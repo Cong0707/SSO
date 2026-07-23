@@ -39,9 +39,14 @@ func Open(cfg config.Config) (*gorm.DB, error) {
 	sqlDB.SetMaxOpenConns(20)
 	if strings.EqualFold(cfg.DatabaseDriver, "sqlite") || strings.EqualFold(cfg.DatabaseDriver, "sqlite3") {
 		sqlDB.SetMaxOpenConns(1)
+		if err := db.Exec("PRAGMA foreign_keys = ON").Error; err != nil {
+			return nil, fmt.Errorf("enable sqlite foreign keys: %w", err)
+		}
 	}
-	if err := Migrate(db); err != nil {
-		return nil, fmt.Errorf("migrate database: %w", err)
+	if cfg.AutoMigrate || strings.EqualFold(cfg.DatabaseDriver, "sqlite") || strings.EqualFold(cfg.DatabaseDriver, "sqlite3") {
+		if err := Migrate(db); err != nil {
+			return nil, fmt.Errorf("migrate database: %w", err)
+		}
 	}
 	return db, nil
 }

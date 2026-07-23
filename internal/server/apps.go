@@ -12,6 +12,7 @@ import (
 	"github.com/Cong0707/sso/internal/model"
 	"github.com/Cong0707/sso/internal/security"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type appRequest struct {
@@ -25,7 +26,7 @@ type appRequest struct {
 
 func (s *Server) listApps(c *gin.Context) {
 	var apps []model.OAuthApplication
-	if err := s.DB.Where("owner_id = ?", s.user(c).ID).Order("created_at DESC").Find(&apps).Error; err != nil {
+	if err := s.DB.Where("owner_id = ? AND disabled_at IS NULL", s.user(c).ID).Order("created_at DESC").Find(&apps).Error; err != nil {
 		s.serveError(c, http.StatusInternalServerError, "读取应用失败")
 		return
 	}
@@ -102,7 +103,12 @@ func (s *Server) updateApp(c *gin.Context) {
 		return
 	}
 	app.Name, app.Homepage, app.Description, app.RedirectURI, app.LogoURL, app.Public = input.Name, input.Homepage, input.Description, input.RedirectURI, input.LogoURL, input.Public
-	if err := s.DB.Save(app).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(app).Error; err != nil {
+			return err
+		}
+		return revokeOAuthTokens(tx, "app_id = ?", app.ID)
+	}); err != nil {
 		s.serveError(c, http.StatusInternalServerError, "更新应用失败")
 		return
 	}
@@ -115,7 +121,16 @@ func (s *Server) deleteApp(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := s.DB.Delete(app).Error; err != nil {
+	now := time.Now()
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(app).Update("disabled_at", &now).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.Grant{}).Where("app_id = ? AND revoked_at IS NULL", app.ID).Update("revoked_at", &now).Error; err != nil {
+			return err
+		}
+		return revokeOAuthTokens(tx, "app_id = ?", app.ID)
+	}); err != nil {
 		s.serveError(c, http.StatusInternalServerError, "删除应用失败")
 		return
 	}
@@ -135,7 +150,12 @@ func (s *Server) rotateAppSecret(c *gin.Context) {
 	}
 	sum := sha256.Sum256([]byte(secret))
 	app.ClientSecretHash = hex.EncodeToString(sum[:])
-	if err := s.DB.Save(app).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(app).Error; err != nil {
+			return err
+		}
+		return revokeOAuthTokens(tx, "app_id = ?", app.ID)
+	}); err != nil {
 		s.serveError(c, http.StatusInternalServerError, "轮换客户端密钥失败")
 		return
 	}
@@ -150,7 +170,7 @@ func (s *Server) findOwnedApp(c *gin.Context) (*model.OAuthApplication, bool) {
 		return nil, false
 	}
 	var app model.OAuthApplication
-	if err := s.DB.Where("id = ? AND owner_id = ?", id, s.user(c).ID).First(&app).Error; err != nil {
+	if err := s.DB.Where("id = ? AND owner_id = ? AND disabled_at IS NULL", id, s.user(c).ID).First(&app).Error; err != nil {
 		s.serveError(c, http.StatusNotFound, "应用不存在")
 		return nil, false
 	}
@@ -182,12 +202,20 @@ func (s *Server) revokeGrant(c *gin.Context) {
 		return
 	}
 	now := time.Now()
-	result := s.DB.Model(&model.Grant{}).Where("id = ? AND user_id = ? AND revoked_at IS NULL", id, s.user(c).ID).Update("revoked_at", &now)
-	if result.Error != nil {
+	var affected int64
+	err = s.DB.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.Grant{}).Where("id = ? AND user_id = ? AND revoked_at IS NULL", id, s.user(c).ID).Update("revoked_at", &now)
+		affected = result.RowsAffected
+		if result.Error != nil || result.RowsAffected == 0 {
+			return result.Error
+		}
+		return revokeOAuthTokens(tx, "grant_id = ?", id)
+	})
+	if err != nil {
 		s.serveError(c, http.StatusInternalServerError, "撤销授权失败")
 		return
 	}
-	if result.RowsAffected == 0 {
+	if affected == 0 {
 		s.serveError(c, http.StatusNotFound, "授权不存在")
 		return
 	}

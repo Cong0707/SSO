@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,7 +22,7 @@ import (
 
 func TestProvisionUpstreamUserImportsProfileAndAllowsLaterUserEdits(t *testing.T) {
 	db := openTestDatabase(t)
-	application := &Server{DB: db}
+	application := &Server{DB: db, Cfg: config.Config{BootstrapAdminEmails: []string{"octocat@example.com"}}}
 	provider := model.UpstreamProvider{Kind: "github"}
 	identity := upstream.Identity{
 		Subject: "42", Username: "octocat", Name: "The Octocat", Email: "octocat@example.com",
@@ -42,7 +43,7 @@ func TestProvisionUpstreamUserImportsProfileAndAllowsLaterUserEdits(t *testing.T
 		t.Fatalf("verified upstream email was not imported as an equal binding: %#v err=%v", importedEmail, err)
 	}
 	if user.Role != "admin" {
-		t.Fatalf("the first verified upstream account must bootstrap admin access: %#v", user)
+		t.Fatalf("configured verified upstream email must bootstrap admin access: %#v", user)
 	}
 	if user.PasswordConfigured {
 		t.Fatal("upstream-created account must require the user to configure a local password")
@@ -73,6 +74,9 @@ func TestSyncUpstreamProfileAddsVerifiedEmailBinding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("provision placeholder user: %v", err)
 	}
+	if user.Role != "user" {
+		t.Fatalf("an unconfigured first upstream user was promoted to admin: %#v", user)
+	}
 	if err := application.syncUpstreamProfile(&user, upstream.Identity{Subject: "100", Email: "verified@example.com", EmailVerified: true}); err != nil {
 		t.Fatalf("sync verified email: %v", err)
 	}
@@ -84,11 +88,23 @@ func TestSyncUpstreamProfileAddsVerifiedEmailBinding(t *testing.T) {
 
 func TestDatabaseTokenStoreEncryptsPayloadAndSharesLookupState(t *testing.T) {
 	db := openTestDatabase(t)
+	user := model.User{Username: "token-user", PasswordHash: "unused", Locale: "en", Role: "user", Status: "active"}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	app := model.OAuthApplication{OwnerID: user.ID, Name: "Token App", RedirectURI: "https://client.example/callback", ClientID: "client", AllowedScopes: "openid profile"}
+	if err := db.Create(&app).Error; err != nil {
+		t.Fatal(err)
+	}
+	grant := model.Grant{UserID: user.ID, AppID: app.ID, Scopes: "openid profile"}
+	if err := db.Create(&grant).Error; err != nil {
+		t.Fatal(err)
+	}
 	key := bytes.Repeat([]byte{0x31}, 32)
 	store := newDatabaseTokenStore(db, key)
 	token := oauthModels.NewToken()
 	token.SetClientID("client")
-	token.SetUserID("user")
+	token.SetUserID(strconv.FormatUint(user.ID, 10))
 	token.SetAccess("access-secret")
 	token.SetAccessCreateAt(time.Now())
 	token.SetAccessExpiresIn(time.Hour)
@@ -106,7 +122,7 @@ func TestDatabaseTokenStoreEncryptsPayloadAndSharesLookupState(t *testing.T) {
 		t.Fatalf("raw token leaked into persistence: %#v", record)
 	}
 	loaded, err := store.GetByAccess(context.Background(), "access-secret")
-	if err != nil || loaded == nil || loaded.GetUserID() != "user" {
+	if err != nil || loaded == nil || loaded.GetUserID() != strconv.FormatUint(user.ID, 10) {
 		t.Fatalf("load token: info=%#v err=%v", loaded, err)
 	}
 	if err := store.RemoveByRefresh(context.Background(), "refresh-secret"); err != nil {
@@ -115,6 +131,68 @@ func TestDatabaseTokenStoreEncryptsPayloadAndSharesLookupState(t *testing.T) {
 	loaded, err = store.GetByAccess(context.Background(), "access-secret")
 	if err != nil || loaded != nil {
 		t.Fatalf("token should have been removed: info=%#v err=%v", loaded, err)
+	}
+}
+
+func TestRefreshReplayRevokesRotatedTokenFamily(t *testing.T) {
+	db := openTestDatabase(t)
+	user := model.User{Username: "rotation-user", PasswordHash: "unused", Locale: "en", Role: "user", Status: "active"}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	app := model.OAuthApplication{OwnerID: user.ID, Name: "Rotation App", RedirectURI: "https://client.example/callback", ClientID: "rotation-client", AllowedScopes: "openid profile"}
+	if err := db.Create(&app).Error; err != nil {
+		t.Fatal(err)
+	}
+	grant := model.Grant{UserID: user.ID, AppID: app.ID, Scopes: "openid profile"}
+	if err := db.Create(&grant).Error; err != nil {
+		t.Fatal(err)
+	}
+	store := newDatabaseTokenStore(db, bytes.Repeat([]byte{0x32}, 32)).(*databaseTokenStore)
+	oldToken := oauthModels.NewToken()
+	oldToken.SetClientID(app.ClientID)
+	oldToken.SetUserID(strconv.FormatUint(user.ID, 10))
+	oldToken.SetScope("openid profile")
+	oldToken.SetAccess("old-access")
+	oldToken.SetAccessCreateAt(time.Now())
+	oldToken.SetAccessExpiresIn(time.Hour)
+	oldToken.SetRefresh("old-refresh")
+	oldToken.SetRefreshCreateAt(time.Now())
+	oldToken.SetRefreshExpiresIn(24 * time.Hour)
+	if err := store.Create(context.Background(), oldToken); err != nil {
+		t.Fatal(err)
+	}
+	claimedContext, claimed, err := store.claimRefresh(context.Background(), "old-refresh", app.ClientID)
+	if err != nil || !claimed {
+		t.Fatalf("claim old refresh: claimed=%v err=%v", claimed, err)
+	}
+	loaded, err := store.GetByRefresh(claimedContext, "old-refresh")
+	if err != nil || loaded == nil {
+		t.Fatalf("claimed refresh was not available to its exchange request: info=%#v err=%v", loaded, err)
+	}
+	familyID := oldToken.GetExtension().Get("token_family_id")
+	newToken := oauthModels.NewToken()
+	newToken.SetClientID(app.ClientID)
+	newToken.SetUserID(strconv.FormatUint(user.ID, 10))
+	newToken.SetScope("openid profile")
+	newToken.SetAccess("new-access")
+	newToken.SetAccessCreateAt(time.Now())
+	newToken.SetAccessExpiresIn(time.Hour)
+	newToken.SetRefresh("new-refresh")
+	newToken.SetRefreshCreateAt(time.Now())
+	newToken.SetRefreshExpiresIn(24 * time.Hour)
+	newToken.GetExtension().Set("token_family_id", familyID)
+	if err := store.Create(context.Background(), newToken); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RemoveByAccess(context.Background(), "old-access"); err != nil {
+		t.Fatal(err)
+	}
+	if _, replayed, err := store.claimRefresh(context.Background(), "old-refresh", app.ClientID); err != nil || replayed {
+		t.Fatalf("consumed refresh token was accepted again: claimed=%v err=%v", replayed, err)
+	}
+	if active, err := store.GetByAccess(context.Background(), "new-access"); err != nil || active != nil {
+		t.Fatalf("refresh replay did not revoke the rotated family: info=%#v err=%v", active, err)
 	}
 }
 

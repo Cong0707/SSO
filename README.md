@@ -28,11 +28,14 @@ $env:SSO_DATABASE_DSN = "host=127.0.0.1 user=sso password=change-me dbname=sso p
 $env:SSO_REDIS_ADDR = "127.0.0.1:6379"
 $env:SSO_REDIS_PASSWORD = "replace-me"
 $env:SSO_ALLOW_KEY_GENERATION = "true" # 仅本地演示
+$env:SSO_AUTO_MIGRATE = "false"
+$env:SSO_BOOTSTRAP_ADMIN_EMAILS = "admin@example.com"
 $env:SSO_SMTP_HOST = "smtp.example.com"
 $env:SSO_SMTP_PORT = "587"
 $env:SSO_SMTP_USERNAME = "mailer@example.com"
 $env:SSO_SMTP_PASSWORD = "replace-me"
 $env:SSO_SMTP_FROM = "mailer@example.com"
+go run ./cmd/migrate
 go run ./cmd/sso
 ```
 
@@ -41,7 +44,9 @@ go run ./cmd/sso
 ```powershell
 $env:SSO_DATABASE_DRIVER = "sqlite"
 $env:SSO_DATABASE_DSN = "data/sso.db"
+$env:SSO_DATA_DIR = "data"
 $env:SSO_ALLOW_KEY_GENERATION = "true"
+$env:SSO_BOOTSTRAP_ADMIN_EMAILS = "admin@example.com"
 $env:SSO_EMAIL_DEBUG = "true" # 仅本机调试，页面会显示验证码
 go run ./cmd/sso
 ```
@@ -56,7 +61,7 @@ npm run dev
 
 默认后端/前端开发端口是 `8080` / `5174`。如果端口被占用，设置 `SSO_ADDR`、`SSO_ISSUER` 并同步修改 `web/vite.config.ts` 代理端口。
 
-完成邮箱验证的第一个账号自动成为管理员。管理员登录后从侧栏进入 `管理 -> 系统设置` 配置邮件、Captcha 和第三方登录；未启用或未完整配置的登录方式不会显示在公开认证页。
+系统不会把首个注册用户自动提升为管理员。只有 `SSO_BOOTSTRAP_ADMIN_EMAILS` 中明确列出的邮箱在完成验证后获得管理员权限。管理员登录后从侧栏进入 `管理 -> 系统设置` 配置邮件、Captcha 和第三方登录；未启用或未完整配置的登录方式不会显示在公开认证页。
 
 生产构建：
 
@@ -65,6 +70,8 @@ cd web
 npm run build
 cd ..
 go build -o sso.exe ./cmd/sso
+go build -o sso-migrate.exe ./cmd/migrate
+go build -o sso-migrate-new-api.exe ./cmd/migrate-new-api
 ```
 
 ## Docker Compose
@@ -73,24 +80,31 @@ go build -o sso.exe ./cmd/sso
 docker compose up -d --build
 ```
 
-Compose 会启动 PostgreSQL、Redis 和 SSO。Redis 保存跨实例共享的短期限流计数；SSO 启用限流后如果 Redis 不可用，会拒绝认证和敏感操作。Compose 为本地开发默认允许自动生成密钥；生产环境应改为挂载固定的 `SSO_MASTER_KEY_FILE` 和 `SSO_OIDC_SIGNING_KEY_FILE`，并关闭 `SSO_ALLOW_KEY_GENERATION`。
+Compose 会启动本地开发用 PostgreSQL、Redis，先执行一次 schema migration，再启动 SSO。Redis 保存跨实例共享的短期限流计数；SSO 启用限流后如果 Redis 不可用，会拒绝认证和敏感操作。Compose 只用于开发，生产环境应挂载固定密钥并使用外部高可用 PostgreSQL/Redis。
 
 ## Kubernetes 部署
 
-清单位于 [`deploy/k8s`](deploy/k8s)，默认包含单副本 PostgreSQL、PVC、探针、非 root 容器、只读根文件系统、NetworkPolicy 和 Service。先创建实际 Secret，不要把真实 Secret 提交到 Git：
+清单位于 [`deploy/k8s`](deploy/k8s)，默认部署 2 个 SSO Pod、RollingUpdate、PDB、跨节点分布、CephFS RWX 卷、探针、非 root 容器、只读根文件系统和 NetworkPolicy。数据库和 Redis 必须由现有 PostgreSQL Operator 与 HA Redis 提供，默认清单不会创建单实例依赖。
+
+先把 `sso-deployment.yaml` 和 `sso-migration-job.example.yaml` 中的镜像 digest 占位值替换为 CI 实际产物，并在首次启动前配置 SMTP、Captcha 与管理员邮箱。需要开放注册时，应在第一次启动应用 Pod 前把 `SSO_REGISTRATION_ENABLED` 改为 `true`；该值首次启动后由数据库设置页管理。
 
 ```powershell
 kubectl create namespace sso
 kubectl -n sso create secret generic sso-secrets `
-  --from-literal=POSTGRES_PASSWORD='替换为随机长密码' `
   --from-literal=SSO_REDIS_PASSWORD='替换为另一随机长密码' `
-  --from-literal=SSO_DATABASE_DSN='host=postgres user=sso password=替换为随机长密码 dbname=sso port=5432 sslmode=disable TimeZone=UTC' `
+  --from-literal=SSO_BOOTSTRAP_ADMIN_EMAILS='admin@example.com' `
+  --from-literal=SSO_DATABASE_DSN='host=postgres-rw.database.svc.cluster.local user=sso password=替换为随机长密码 dbname=sso port=5432 sslmode=verify-full TimeZone=UTC' `
   --from-file=master.key=data/master.key `
   --from-file=oidc-signing.pem=data/oidc-signing.pem
+kubectl -n sso apply -f deploy/k8s/sso-configmap.yaml
+kubectl -n sso apply -f deploy/k8s/sso-pvc.yaml
+kubectl -n sso delete job sso-schema-migrate --ignore-not-found
+kubectl apply -f deploy/k8s/sso-migration-job.example.yaml
+kubectl -n sso wait --for=condition=complete job/sso-schema-migrate --timeout=300s
 kubectl apply -k deploy/k8s
 ```
 
-`master.key` 必须是 32 字节密钥的无填充 Base64 文本，`oidc-signing.pem` 必须是 RSA 私钥。生产域名、TLS Secret 和镜像地址请修改 `sso-configmap.yaml`、`sso-ingress.example.yaml` 与 `sso-deployment.yaml`。Kubernetes 示例部署 Redis 供所有 SSO Pod 共享限流状态；正式环境可替换为高可用 Redis 服务。当前头像仍保存于应用 PVC，多副本部署应换成 Ceph、对象存储或 RWX 卷。
+`master.key` 必须是 32 字节密钥的无填充 Base64 文本，`oidc-signing.pem` 必须是 RSA 私钥。生产域名、TLS Secret、外部 Redis 地址、Ceph StorageClass 和实际 Ingress 可信代理 CIDR 必须在集群 overlay 中设置。应用 Pod 不执行 schema 变更；每次升级先运行迁移 Job，成功后再滚动 Deployment。
 
 ## OAuth/OIDC 端点
 
@@ -99,17 +113,20 @@ GET  /.well-known/openid-configuration
 GET  /oauth/authorize
 POST /oauth/token
 POST /oauth/revoke
+POST /oauth/introspect
 GET  /oauth/userinfo
 GET  /oauth/jwks.json
 ```
 
-新应用默认允许 `openid profile email`，授权码有效期 5 分钟，访问令牌 15 分钟，刷新令牌 30 天。所有应用必须使用精确匹配的回调地址，授权请求必须带 `code_challenge`。
+新应用默认允许 `openid profile email`，授权码有效期 5 分钟，访问令牌 15 分钟，刷新令牌 30 天。所有应用必须使用精确匹配的回调地址和 S256 `code_challenge`。撤销与 introspection 都要求客户端认证。
 
 ## 数据与密钥
 
 `SSO_MASTER_KEY_FILE` 用于加密 MFA、上游客户端密钥和 OAuth 令牌载荷；`SSO_OIDC_SIGNING_KEY_FILE` 用于签发 OIDC ID Token。两者必须和数据库一起备份，权限应限制为服务用户。OAuth 令牌只在数据库中保存 SHA-256 索引和 AES-GCM 加密载荷，不再使用单机 BuntDB 文件。
 
-注册和邮箱绑定验证码使用 master key 计算 HMAC-SHA256，10 分钟过期，限制尝试次数并带 60 秒重发间隔。生产环境必须通过环境变量引导 SMTP，或在首个管理员创建前由部署流程写入系统设置；`SSO_EMAIL_DEBUG` 必须保持为 `false`。
+注册和邮箱绑定验证码使用 master key 计算 HMAC-SHA256，10 分钟过期，限制尝试次数并带 60 秒重发间隔。生产环境必须先通过环境变量引导 SMTP、Captcha 和管理员邮箱，完成配置后再开启注册；`SSO_EMAIL_DEBUG` 必须保持为 `false`。
+
+账号注销、合并、重新启用和角色变化会写入事务 outbox。设置 `SSO_LIFECYCLE_WEBHOOK_URL` 与 `SSO_LIFECYCLE_WEBHOOK_SECRET` 后，多 Pod 会安全抢占待发送事件，使用 `X-Xem-Signature-SHA256` 验签，并记录成功回执、重试与死信。
 
 ## 新增登录方式
 

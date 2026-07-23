@@ -154,6 +154,11 @@ func (s *Server) upstreamStart(c *gin.Context) {
 		s.serveError(c, http.StatusInternalServerError, "生成登录状态失败")
 		return
 	}
+	browserNonce, err := security.RandomToken(32)
+	if err != nil {
+		s.serveError(c, http.StatusInternalServerError, "生成浏览器登录状态失败")
+		return
+	}
 	verifier, err := security.RandomToken(48)
 	if err != nil {
 		s.serveError(c, http.StatusInternalServerError, "生成 PKCE 参数失败")
@@ -188,6 +193,7 @@ func (s *Server) upstreamStart(c *gin.Context) {
 	}
 	stateRecord := model.UpstreamOAuthState{
 		ProviderID: providerRecord.ID, SessionID: sessionID, MergeFlowID: mergeFlowID, TokenHash: security.HashToken(state),
+		BrowserNonceHash:      security.HashToken(browserNonce),
 		CodeVerifierEncrypted: encryptedVerifier, Locale: requestLocale(c.Query("locale"), c.GetHeader("Accept-Language")),
 		ReturnTo: safeReturnTo(c.Query("return_to")), ExpiresAt: time.Now().Add(10 * time.Minute),
 	}
@@ -195,6 +201,10 @@ func (s *Server) upstreamStart(c *gin.Context) {
 		s.serveError(c, http.StatusInternalServerError, "保存登录状态失败")
 		return
 	}
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name: "sso_upstream_nonce", Value: browserNonce, Path: "/oauth/upstream/", MaxAge: 600,
+		HttpOnly: true, Secure: s.Cfg.CookieSecure, SameSite: http.SameSiteLaxMode,
+	})
 	c.Redirect(http.StatusFound, authorizationURL)
 }
 
@@ -204,17 +214,19 @@ func (s *Server) upstreamCallback(c *gin.Context) {
 		return
 	}
 	stateRaw := c.Query("state")
+	browserNonce, nonceErr := c.Cookie("sso_upstream_nonce")
 	var state model.UpstreamOAuthState
-	if stateRaw == "" || s.DB.Where("token_hash = ? AND used_at IS NULL", security.HashToken(stateRaw)).First(&state).Error != nil || state.ExpiresAt.Before(time.Now()) {
+	if stateRaw == "" || nonceErr != nil || browserNonce == "" || s.DB.Where("token_hash = ? AND browser_nonce_hash = ? AND used_at IS NULL", security.HashToken(stateRaw), security.HashToken(browserNonce)).First(&state).Error != nil || state.ExpiresAt.Before(time.Now()) {
 		c.Redirect(http.StatusFound, "/login?oauth_error=invalid_state")
 		return
 	}
 	now := time.Now()
-	result := s.DB.Model(&model.UpstreamOAuthState{}).Where("id = ? AND used_at IS NULL", state.ID).Update("used_at", &now)
+	result := s.DB.Model(&model.UpstreamOAuthState{}).Where("id = ? AND browser_nonce_hash = ? AND used_at IS NULL", state.ID, security.HashToken(browserNonce)).Update("used_at", &now)
 	if result.Error != nil || result.RowsAffected != 1 {
 		c.Redirect(http.StatusFound, "/login?oauth_error=state_already_used")
 		return
 	}
+	http.SetCookie(c.Writer, &http.Cookie{Name: "sso_upstream_nonce", Value: "", Path: "/oauth/upstream/", MaxAge: -1, HttpOnly: true, Secure: s.Cfg.CookieSecure, SameSite: http.SameSiteLaxMode})
 	var providerRecord model.UpstreamProvider
 	if s.DB.First(&providerRecord, state.ProviderID).Error != nil || !providerRecord.Enabled || providerRecord.Kind != strings.ToLower(c.Param("kind")) {
 		c.Redirect(http.StatusFound, "/login?oauth_error=provider_mismatch")
@@ -394,14 +406,10 @@ func (s *Server) provisionUpstreamUser(provider model.UpstreamProvider, identity
 		DisplayName: displayName, AvatarURL: strings.TrimSpace(identity.AvatarURL), Locale: requestLocale(locale, ""),
 		SecurityEmailEnabled: true, Role: "user", Status: "active",
 	}
+	if email != "" && s.isBootstrapAdminEmail(email) {
+		user.Role = "admin"
+	}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
-		var count int64
-		if err := tx.Model(&model.User{}).Count(&count).Error; err != nil {
-			return err
-		}
-		if count == 0 {
-			user.Role = "admin"
-		}
 		if err := tx.Create(&user).Error; err != nil {
 			return err
 		}

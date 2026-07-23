@@ -1,10 +1,14 @@
 package model
 
 import (
+	"encoding/json"
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
 )
+
+const CurrentSchemaVersion uint64 = 1
 
 type User struct {
 	ID                   uint64     `gorm:"primaryKey" json:"id"`
@@ -24,6 +28,7 @@ type User struct {
 	Status               string     `gorm:"size:32;not null;index" json:"status"`
 	DeactivatedAt        *time.Time `gorm:"index" json:"deactivated_at"`
 	MergedIntoUserID     *uint64    `gorm:"index" json:"merged_into_user_id"`
+	IdentityVersion      uint64     `gorm:"not null;default:1" json:"identity_version"`
 	LastLoginAt          *time.Time `json:"last_login_at"`
 }
 
@@ -35,6 +40,7 @@ type UserEmail struct {
 	Email           string     `gorm:"size:254;not null" json:"email"`
 	NormalizedEmail string     `gorm:"size:254;uniqueIndex;not null" json:"-"`
 	VerifiedAt      *time.Time `gorm:"index" json:"verified_at"`
+	User            User       `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
 }
 
 type Session struct {
@@ -50,6 +56,16 @@ type Session struct {
 	LastSeenAt time.Time  `gorm:"not null;index" json:"last_seen_at"`
 	ExpiresAt  time.Time  `gorm:"not null;index" json:"expires_at"`
 	RevokedAt  *time.Time `gorm:"index" json:"revoked_at"`
+	User       User       `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
+}
+
+type MFABackupCode struct {
+	ID        uint64     `gorm:"primaryKey" json:"-"`
+	CreatedAt time.Time  `json:"-"`
+	UserID    uint64     `gorm:"not null;index;uniqueIndex:idx_mfa_backup_user_code" json:"-"`
+	CodeHash  string     `gorm:"size:64;not null;index;uniqueIndex:idx_mfa_backup_user_code" json:"-"`
+	UsedAt    *time.Time `gorm:"index" json:"-"`
+	User      User       `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
 }
 
 type OAuthApplication struct {
@@ -67,6 +83,7 @@ type OAuthApplication struct {
 	Public           bool       `gorm:"not null" json:"public"`
 	AllowedScopes    string     `gorm:"type:text;not null" json:"allowed_scopes"`
 	DisabledAt       *time.Time `gorm:"index" json:"disabled_at"`
+	Owner            User       `gorm:"foreignKey:OwnerID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"-"`
 }
 
 type Grant struct {
@@ -78,6 +95,22 @@ type Grant struct {
 	Scopes    string           `gorm:"type:text;not null" json:"scopes"`
 	RevokedAt *time.Time       `gorm:"index" json:"revoked_at"`
 	App       OAuthApplication `gorm:"foreignKey:AppID" json:"app"`
+	User      User             `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"-"`
+}
+
+type OAuthApproval struct {
+	ID          uint64           `gorm:"primaryKey" json:"-"`
+	CreatedAt   time.Time        `json:"-"`
+	TokenHash   string           `gorm:"size:64;uniqueIndex;not null" json:"-"`
+	UserID      uint64           `gorm:"not null;index" json:"-"`
+	AppID       uint64           `gorm:"not null;index" json:"-"`
+	Scopes      string           `gorm:"type:text;not null" json:"-"`
+	RequestHash string           `gorm:"size:64;not null;index" json:"-"`
+	StateHash   string           `gorm:"size:64;not null" json:"-"`
+	ExpiresAt   time.Time        `gorm:"not null;index" json:"-"`
+	UsedAt      *time.Time       `gorm:"index" json:"-"`
+	User        User             `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
+	App         OAuthApplication `gorm:"foreignKey:AppID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
 }
 
 type AuthorizationLog struct {
@@ -103,6 +136,7 @@ type PersonalAccessToken struct {
 	LastUsedAt *time.Time `json:"last_used_at"`
 	ExpiresAt  *time.Time `gorm:"index" json:"expires_at"`
 	RevokedAt  *time.Time `gorm:"index" json:"revoked_at"`
+	User       User       `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
 }
 
 type AuditEvent struct {
@@ -134,6 +168,7 @@ type AuthFlow struct {
 	LastSentAt           *time.Time `json:"-"`
 	ExpiresAt            time.Time  `gorm:"not null;index" json:"-"`
 	UsedAt               *time.Time `gorm:"index" json:"-"`
+	User                 *User      `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
 }
 
 type SystemSetting struct {
@@ -176,6 +211,7 @@ type UpstreamIdentity struct {
 	VerifiedAt    *time.Time       `gorm:"index" json:"verified_at"`
 	LastLoginAt   time.Time        `json:"last_login_at"`
 	Provider      UpstreamProvider `gorm:"foreignKey:ProviderID" json:"provider"`
+	User          User             `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
 }
 
 type UpstreamOAuthState struct {
@@ -186,6 +222,7 @@ type UpstreamOAuthState struct {
 	MergeFlowID           *uint64    `gorm:"index" json:"-"`
 	Locale                string     `gorm:"size:16" json:"-"`
 	TokenHash             string     `gorm:"size:64;uniqueIndex;not null" json:"-"`
+	BrowserNonceHash      string     `gorm:"size:64;not null" json:"-"`
 	CodeVerifierEncrypted string     `gorm:"type:text;not null" json:"-"`
 	ReturnTo              string     `gorm:"size:2048" json:"-"`
 	ExpiresAt             time.Time  `gorm:"not null;index" json:"-"`
@@ -197,22 +234,94 @@ type UpstreamOAuthState struct {
 // values are never persisted; PayloadEncrypted contains the encrypted oauth2
 // token model and the lookup columns contain SHA-256 digests.
 type OAuthTokenRecord struct {
-	ID               uint64    `gorm:"primaryKey" json:"-"`
-	CreatedAt        time.Time `json:"-"`
-	CodeHash         string    `gorm:"size:64;index" json:"-"`
-	AccessHash       string    `gorm:"size:64;index" json:"-"`
-	RefreshHash      string    `gorm:"size:64;index" json:"-"`
-	PayloadEncrypted string    `gorm:"type:text;not null" json:"-"`
-	ExpiresAt        time.Time `gorm:"not null;index" json:"-"`
+	ID                uint64     `gorm:"primaryKey" json:"-"`
+	CreatedAt         time.Time  `json:"-"`
+	UserID            uint64     `gorm:"not null;index" json:"-"`
+	AppID             *uint64    `gorm:"index" json:"-"`
+	GrantID           *uint64    `gorm:"index" json:"-"`
+	ClientID          string     `gorm:"size:64;not null;index" json:"-"`
+	TokenFamilyID     string     `gorm:"size:64;not null;index" json:"-"`
+	CodeHash          string     `gorm:"size:64;index" json:"-"`
+	AccessHash        string     `gorm:"size:64;index" json:"-"`
+	RefreshHash       string     `gorm:"size:64;index" json:"-"`
+	RefreshConsumedAt *time.Time `gorm:"index" json:"-"`
+	PayloadEncrypted  string     `gorm:"type:text;not null" json:"-"`
+	ExpiresAt         time.Time  `gorm:"not null;index" json:"-"`
+	RevokedAt         *time.Time `gorm:"index" json:"-"`
+	User              User       `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
+}
+
+// SchemaMigration records the versioned migrations applied by the deployment
+// migration Job. Application Pods only verify this state and never mutate it.
+type SchemaMigration struct {
+	Version   uint64    `gorm:"primaryKey"`
+	AppliedAt time.Time `gorm:"not null"`
+}
+
+// AccountAlias makes a merged subject resolvable without rewriting any
+// downstream service's immutable business user identifier.
+type AccountAlias struct {
+	SourceUserID    uint64    `gorm:"primaryKey" json:"source_user_id"`
+	CanonicalUserID uint64    `gorm:"not null;index" json:"canonical_user_id"`
+	CreatedAt       time.Time `gorm:"not null" json:"created_at"`
+}
+
+// LifecycleEvent is a transactional outbox record. It is created in the same
+// transaction as an identity state transition and delivered asynchronously.
+type LifecycleEvent struct {
+	ID              string     `gorm:"primaryKey;size:36" json:"id"`
+	CreatedAt       time.Time  `gorm:"not null;index" json:"created_at"`
+	UserID          uint64     `gorm:"not null;index" json:"user_id"`
+	IdentityVersion uint64     `gorm:"not null" json:"identity_version"`
+	Type            string     `gorm:"size:64;not null;index" json:"type"`
+	Payload         string     `gorm:"type:text;not null" json:"payload"`
+	Attempts        int        `gorm:"not null;default:0" json:"attempts"`
+	NextAttemptAt   time.Time  `gorm:"not null;index" json:"next_attempt_at"`
+	LockedAt        *time.Time `gorm:"index" json:"-"`
+	DeliveredAt     *time.Time `gorm:"index" json:"delivered_at"`
+	DeadLetteredAt  *time.Time `gorm:"index" json:"dead_lettered_at"`
+	LastError       string     `gorm:"type:text" json:"-"`
+}
+
+type IdentityMigrationBatch struct {
+	ID           string     `gorm:"primaryKey;size:36" json:"id"`
+	CreatedAt    time.Time  `gorm:"not null" json:"created_at"`
+	CompletedAt  *time.Time `json:"completed_at"`
+	SourceSystem string     `gorm:"size:64;not null;index" json:"source_system"`
+	SourceMaxID  int64      `gorm:"not null" json:"source_max_id"`
+	Status       string     `gorm:"size:32;not null;index" json:"status"`
+}
+
+type IdentityMigrationMapping struct {
+	ID           uint64    `gorm:"primaryKey" json:"id"`
+	CreatedAt    time.Time `gorm:"not null" json:"created_at"`
+	BatchID      string    `gorm:"size:36;not null;index" json:"batch_id"`
+	SourceSystem string    `gorm:"size:64;not null;uniqueIndex:idx_identity_source_user" json:"source_system"`
+	SourceUserID int64     `gorm:"not null;uniqueIndex:idx_identity_source_user" json:"source_user_id"`
+	SSOUserID    uint64    `gorm:"not null;uniqueIndex" json:"sso_user_id"`
+	SourceRole   int       `gorm:"not null" json:"source_role"`
+	SourceStatus int       `gorm:"not null" json:"source_status"`
+}
+
+type IdentityMigrationConflict struct {
+	ID           uint64    `gorm:"primaryKey" json:"id"`
+	CreatedAt    time.Time `gorm:"not null" json:"created_at"`
+	BatchID      string    `gorm:"size:36;not null;index" json:"batch_id"`
+	SourceUserID int64     `gorm:"not null;index" json:"source_user_id"`
+	Severity     string    `gorm:"size:16;not null;index" json:"severity"`
+	Kind         string    `gorm:"size:64;not null;index" json:"kind"`
+	Detail       string    `gorm:"type:text;not null" json:"detail"`
 }
 
 func Migrate(db *gorm.DB) error {
-	return db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&User{},
 		&UserEmail{},
 		&Session{},
+		&MFABackupCode{},
 		&OAuthApplication{},
 		&Grant{},
+		&OAuthApproval{},
 		&AuthorizationLog{},
 		&PersonalAccessToken{},
 		&AuditEvent{},
@@ -222,5 +331,67 @@ func Migrate(db *gorm.DB) error {
 		&UpstreamIdentity{},
 		&UpstreamOAuthState{},
 		&OAuthTokenRecord{},
-	)
+		&SchemaMigration{},
+		&AccountAlias{},
+		&LifecycleEvent{},
+		&IdentityMigrationBatch{},
+		&IdentityMigrationMapping{},
+		&IdentityMigrationConflict{},
+	); err != nil {
+		return err
+	}
+	if err := migrateLegacyBackupCodes(db); err != nil {
+		return err
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		var migration SchemaMigration
+		err := tx.Where("version = ?", CurrentSchemaVersion).First(&migration).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return tx.Create(&SchemaMigration{Version: CurrentSchemaVersion, AppliedAt: time.Now().UTC()}).Error
+		}
+		return err
+	})
+}
+
+// SchemaReady only performs reads and is safe to call from readiness probes.
+func SchemaReady(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&SchemaMigration{}) {
+		return errors.New("schema migrations table is missing")
+	}
+	var migration SchemaMigration
+	if err := db.Where("version = ?", CurrentSchemaVersion).First(&migration).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("database schema is not migrated")
+		}
+		return err
+	}
+	return nil
+}
+
+func migrateLegacyBackupCodes(db *gorm.DB) error {
+	var users []User
+	if err := db.Where("mfa_backup_code_hashes <> '' AND mfa_backup_code_hashes <> '[]'").Find(&users).Error; err != nil {
+		return err
+	}
+	for _, user := range users {
+		var hashes []string
+		if json.Unmarshal([]byte(user.MFABackupCodeHashes), &hashes) != nil {
+			continue
+		}
+		if err := db.Transaction(func(tx *gorm.DB) error {
+			for _, hash := range hashes {
+				if hash == "" {
+					continue
+				}
+				record := MFABackupCode{UserID: user.ID, CodeHash: hash}
+				if err := tx.Where("user_id = ? AND code_hash = ?", user.ID, hash).FirstOrCreate(&record).Error; err != nil {
+					return err
+				}
+			}
+			return tx.Model(&user).Update("mfa_backup_code_hashes", "[]").Error
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

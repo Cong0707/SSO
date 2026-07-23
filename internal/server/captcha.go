@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"strings"
 	"time"
@@ -100,17 +99,50 @@ func (s *Server) capProxy(c *gin.Context) {
 		s.serveError(c, http.StatusBadGateway, "PoW 服务地址无效")
 		return
 	}
-	proxy := httputil.NewSingleHostReverseProxy(target)
-	original := proxy.Director
-	proxy.Director = func(request *http.Request) {
-		original(request)
-		request.URL.Path = strings.TrimRight(target.Path, "/") + "/" + proxyPath
-		request.URL.RawPath = ""
-		request.URL.RawQuery = c.Request.URL.RawQuery
-		request.Host = target.Host
+	if c.Request.ContentLength > 1<<20 {
+		s.serveError(c, http.StatusRequestEntityTooLarge, "Cap 请求体过大")
+		return
 	}
-	proxy.ErrorHandler = func(writer http.ResponseWriter, _ *http.Request, _ error) {
-		http.Error(writer, "Cap service unavailable", http.StatusBadGateway)
+	if len(c.Request.URL.RawQuery) > 8<<10 {
+		s.serveError(c, http.StatusRequestURITooLong, "Cap 查询参数过长")
+		return
 	}
-	proxy.ServeHTTP(c.Writer, c.Request)
+	upstreamURL := *target
+	upstreamURL.Path = strings.TrimRight(target.Path, "/") + "/" + proxyPath
+	upstreamURL.RawPath = ""
+	upstreamURL.RawQuery = c.Request.URL.RawQuery
+	request, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, upstreamURL.String(), http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20))
+	if err != nil {
+		s.serveError(c, http.StatusBadGateway, "Cap 请求无效")
+		return
+	}
+	for _, name := range []string{"Accept", "Content-Type"} {
+		if value := c.GetHeader(name); value != "" {
+			request.Header.Set(name, value)
+		}
+	}
+	response, err := captchaHTTPClient.Do(request)
+	if err != nil {
+		s.serveError(c, http.StatusBadGateway, "Cap service unavailable")
+		return
+	}
+	defer response.Body.Close()
+	for _, name := range []string{"Content-Type", "Cache-Control", "ETag"} {
+		if value := response.Header.Get(name); value != "" {
+			c.Header(name, value)
+		}
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, (2<<20)+1))
+	if err != nil {
+		s.serveError(c, http.StatusBadGateway, "Cap 响应读取失败")
+		return
+	}
+	if len(body) > 2<<20 {
+		s.serveError(c, http.StatusBadGateway, "Cap 响应体过大")
+		return
+	}
+	c.Status(response.StatusCode)
+	if _, err := c.Writer.Write(body); err != nil {
+		return
+	}
 }

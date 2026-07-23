@@ -1,42 +1,91 @@
-# new-api 用户迁移映射
+# new-api 身份迁移运行手册
 
-参考仓库：`git@github.com:cong0707/new-api.git`，当前基线 `6227b87b6c140edc70eeaf95f8125133c02aa346`。
+这份文档描述上线前的身份迁移。new-api 的业务用户表、原始 `id`、角色、额度、分组、支付、订阅、工单、日志和业务 Token 不迁入 SSO，也不会被删除或改写。SSO 只接管登录身份、邮箱、第三方绑定、资料、MFA 和全局账号状态。
 
-## 字段映射
+## 权威边界
 
-| new-api `model.User` | 统一身份中心 | 处理 |
-| --- | --- | --- |
-| `Id` | 不直接复用，写入迁移表映射 | SSO 使用自己的 `uint64` 主键，业务引用通过迁移映射表保存 |
-| `Username` | `users.username` | 需要限制到 32 字符；重复值先人工解决 |
-| `Email` | `users.email` | 统一 `lower(trim(email))`；SSO 要求唯一，重复邮箱必须先确认归属 |
-| `Password` | `users.password_hash` | bcrypt 原值可直接导入；首次成功登录自动升级 Argon2id |
-| `DisplayName` | `users.display_name` | 空值回退到 `Username` |
-| `Role` | `users.role` | `RoleAdminUser` 映射 `admin`，其它映射 `user` |
-| `Status` | `users.status` | enabled 映射 `active`，其它映射 `disabled` |
-| `CreatedAt` | `users.created_at` | new-api Unix 秒转 `time.Time` |
-| `LastLoginAt` | `users.last_login_at` | 0 转为空 |
-| `GitHubId` | `upstream_identities(kind=github)` | `external_id` 原值，不复制 client secret |
-| `DiscordId` | `upstream_identities(kind=discord)` | 同上 |
-| `OidcId` | `upstream_identities(kind=oidc)` | 必须同时确认 OIDC issuer |
-| `LinuxDOId` | `upstream_identities(kind=linuxdo)` | 同上 |
-| `TelegramId` | `upstream_identities(kind=telegram)` | 专用 Telegram 校验完成后再写入 |
-| `WeChatId` | `upstream_identities(kind=wechat)` | 专用微信校验完成后再写入 |
-| `AccessToken` | `personal_access_tokens` | 只允许一次性导入并立即哈希，不在日志输出原 token |
+| 数据 | 权威系统 |
+| --- | --- |
+| 密码与邮箱 | SSO `users`、`user_emails` |
+| GitHub/Discord/OIDC/LinuxDO/Telegram/微信绑定 | SSO `upstream_identities` |
+| 显示名、头像、语言、MFA、账号注销/合并 | SSO |
+| new-api 用户主键、角色 1/10/100、分组、额度、钱包、订阅、支付、业务 Token | new-api |
 
-`Quota`、`UsedQuota`、`RequestCount`、`Group`、Stripe、邀请额度等网关计费字段不属于 SSO 身份边界，应留在 new-api 或单独的业务库。
+new-api 应增加 `sso_subject` 唯一映射，但不能用 SSO ID 替换现有业务 `users.id`。合并账号通过 SSO 生命周期事件中的 `sub` 与 `canonical_sub` 处理，不能重写历史业务外键。
 
-## 推荐迁移顺序
+## 字段处理
 
-1. 以只读账号导出 new-api `users`，保留原始 CSV/JSON，不覆盖原库。
-2. 建立 `new_api_user_id -> sso_user_id` 映射，先迁移用户名、邮箱、bcrypt 密码和账号状态。
-3. 创建 GitHub、Discord、OIDC、LinuxDO、Telegram、微信 provider 记录，再迁移第三方 subject；发生冲突时停止该条记录，不自动合并账号。
-4. 抽样用原密码登录，确认 Argon2id 自动升级、邮箱状态和管理员角色。
-5. 最后导入 PAT/AccessToken，迁移期间禁止把明文 token 写入 SQL 日志、终端或 Git。
-6. 冻结 new-api 写入，执行增量差异检查后再切换业务服务的 OAuth `issuer`。
+- `users.id`：写入 SSO 迁移映射表，不复用为 SSO 主键。
+- `username`：保留源值；源模型限制为 20 字符，SSO 接受 ASCII 3-64 字符。重复或非法值进入冲突报告，不自动改名。
+- `password`：仅接受 bcrypt 摘要，原摘要导入；首次成功登录后由 SSO 升级 Argon2id。空密码账号要求通过已绑定的第三方身份登录后设置密码。
+- `email`：写入 `user_emails`，统一 `lower(trim())`；源库没有可靠的验证时间时默认未验证，重复邮箱停止该用户导入。只有已通过独立数据核验时才可使用 `-trust-source-emails`。
+- `github_id`、`discord_id`、`oidc_id`、`linux_do_id`、`telegram_id`、`wechat_id`：写入平等的 `upstream_identities`。OIDC 必须显式提供 issuer，不能只凭数字 subject 判断全局唯一。
+- `status`、软删除：启用映射为 `active`，其它状态或 `deleted_at` 非空映射为 `deactivated`。注销数据保留，不能重新登录。
+- `role`：new-api 的 1/10/100 仍由 new-api 保存。SSO 只有在 `SSO_BOOTSTRAP_ADMIN_EMAILS` 明确列出已验证邮箱时才授予 `admin`，不会把 100 自动提升成 SSO 管理员。
+- `AccessToken`：不导入 SSO PAT。它继续属于 new-api 业务 Token，迁移工具不会读取该列。
+- Passkey、TOTP、备用码：格式和密钥保护不同，工具只生成需重新注册的警告，不复制密钥或备用码。
 
-## 需要人工确认的风险
+## 迁移工具
 
-- new-api 没有与 SSO 等价的邮箱验证时间字段，迁移账号默认保持“邮箱未验证”。
-- 同一邮箱可能对应多个历史账号；SSO 的唯一邮箱约束不能静默合并。
-- `OidcId` 只有在 issuer 固定后才有全局意义，不能把不同 OIDC 发行方的同值 subject 合并。
-- new-api 的 `AccessToken` 是管理/业务 token，不应自动赋予 SSO 全部 scope；导入时应按用途分成最小 scope。
+先执行单独的数据库 schema Job：
+
+```powershell
+$env:SSO_DATABASE_DRIVER = "postgres"
+$env:SSO_DATABASE_DSN = "host=127.0.0.1 user=sso password=... dbname=sso port=5432 sslmode=verify-full"
+$env:SSO_MASTER_KEY_FILE = "data/master.key"
+$env:SSO_OIDC_SIGNING_KEY_FILE = "data/oidc-signing.pem"
+$env:SSO_ALLOW_KEY_GENERATION = "false"
+go run ./cmd/migrate
+```
+
+只读预检，不写目标库：
+
+```powershell
+go run ./cmd/migrate-new-api `
+  -mode dry-run `
+  -source-driver mysql `
+  -source-dsn 'user:password@tcp(host:3306)/new_api?parseTime=true' `
+  -oidc-issuer 'https://oidc.example.com' `
+  -report migration-dry-run.json
+```
+
+按源用户 ID 导入，命令可重复执行；同一源用户已有映射时跳过。`-after-id` 用于停写期间的追加批次，不能代替带更新时间或变更日志的增量同步。真实切换前必须冻结 new-api 写入并再次执行 dry-run。
+
+```powershell
+go run ./cmd/migrate-new-api `
+  -mode import `
+  -source-driver mysql `
+  -source-dsn 'user:password@tcp(host:3306)/new_api?parseTime=true' `
+  -oidc-issuer 'https://oidc.example.com' `
+  -report migration-import.json
+```
+
+源系统确实强制验证过所有存量邮箱且已完成抽样核验时，可以在导入命令增加 `-trust-source-emails`；否则不得启用。
+
+校验映射：
+
+```powershell
+go run ./cmd/migrate-new-api -mode verify -batch <批次ID> `
+  -source-driver mysql `
+  -source-dsn 'user:password@tcp(host:3306)/new_api?parseTime=true'
+```
+
+仅在上线前的测试批次、确认没有用户活动时回滚；回滚只删除该批次在 SSO 新建的数据，不触碰源库：
+
+```powershell
+go run ./cmd/migrate-new-api -mode rollback -batch <批次ID>
+```
+
+## 冲突门槛
+
+以下任一项都必须人工处理后再切换：重复用户名、规范化邮箱、第三方 subject、无效 bcrypt、缺失 OIDC issuer、没有任何可登录身份。Passkey/TOTP 警告不阻止导入，但必须在通知中要求重新注册。
+
+## 切换与回滚
+
+1. 备份 new-api 和 SSO，记录快照水位与迁移批次 ID。
+2. 关闭 new-api 注册、密码修改、邮箱/第三方绑定和账号合并入口。
+3. 执行最终 dry-run、import、verify，确认没有错误冲突。
+4. new-api 后端使用 OIDC Authorization Code + S256 PKCE；以稳定 `sub` 查找原有业务用户并建立本地 Session。
+5. SSO 的停用、合并和角色变化通过 outbox webhook 消费；消费方按 `event_id` 幂等，失败进入重试/死信。
+6. 观察登录成功率、映射缺失、事件积压和状态不一致后，再关闭 old auth 回退开关。
+7. 回滚只恢复 new-api 的登录入口和 OIDC 配置，不删除 SSO 账号或 new-api 业务数据。

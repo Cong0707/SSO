@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -43,6 +44,8 @@ type Server struct {
 	OIDCKey           *rsa.PrivateKey
 	OIDCKeyID         string
 	Redis             *redis.Client
+	outboxCancel      context.CancelFunc
+	outboxDone        chan struct{}
 }
 
 func New(cfg config.Config, db *gorm.DB) (*Server, error) {
@@ -101,6 +104,7 @@ func New(cfg config.Config, db *gorm.DB) (*Server, error) {
 
 	oauthServer := server.NewServer(server.NewConfig(), manager)
 	oauthServer.Config.ForcePKCE = true
+	oauthServer.Config.AllowedCodeChallengeMethods = []oauth2.CodeChallengeMethod{oauth2.CodeChallengeS256}
 	oauthServer.SetAllowedResponseType(oauth2.Code)
 	oauthServer.SetAllowedGrantType(oauth2.AuthorizationCode, oauth2.Refreshing)
 	oauthServer.SetClientInfoHandler(clientInfoHandler)
@@ -122,11 +126,16 @@ func New(cfg config.Config, db *gorm.DB) (*Server, error) {
 	if err := validateCaptchaSettings(app.setting(settingCaptchaMode, "none"), nil, app.setting); err != nil {
 		return nil, fmt.Errorf("invalid captcha settings: %w", err)
 	}
+	app.startLifecycleDispatcher()
 	initialized = true
 	return app, nil
 }
 
 func (s *Server) Close() error {
+	if s.outboxCancel != nil {
+		s.outboxCancel()
+		<-s.outboxDone
+	}
 	if s.Redis == nil {
 		return nil
 	}
@@ -137,13 +146,16 @@ func (s *Server) Router() *gin.Engine {
 	router := gin.New()
 	_ = router.SetTrustedProxies(s.Cfg.TrustedProxies)
 	router.Use(gin.Logger(), gin.Recovery(), s.requestContext)
-	router.GET("/healthz", s.health)
+	router.GET("/livez", s.liveness)
+	router.GET("/readyz", s.readiness)
+	router.GET("/healthz", s.readiness)
 	router.GET("/.well-known/openid-configuration", s.oidcDiscovery)
 	router.GET("/oauth/jwks.json", s.jwks)
 	router.GET("/oauth/authorize", s.oauthAuthorize)
 	router.POST("/oauth/authorize", s.oauthAuthorize)
 	router.POST("/oauth/token", s.oauthToken)
 	router.POST("/oauth/revoke", s.oauthRevoke)
+	router.POST("/oauth/introspect", s.oauthIntrospect)
 	router.GET("/oauth/userinfo", s.oauthUserInfo)
 	router.POST("/oauth/userinfo", s.oauthUserInfo)
 	router.GET("/oauth/upstream/:kind/start", s.upstreamStart)
@@ -162,20 +174,20 @@ func (s *Server) Router() *gin.Engine {
 	api.POST("/auth/telegram", s.telegramLogin)
 	api.POST("/auth/logout", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.logout)
 	api.POST("/auth/logout-all", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.logoutAll)
-	api.GET("/oauth/consent", s.requireAuth, s.oauthConsentInfo)
-	api.POST("/oauth/consent", s.requireAuth, s.requireCSRF, s.sensitiveRateLimit, s.oauthConsent)
-	api.GET("/dashboard", s.requireAuth, s.dashboard)
-	api.GET("/apps", s.requireAuth, s.listApps)
-	api.POST("/apps", s.requireAuth, s.requireCSRF, s.sensitiveRateLimit, s.createApp)
-	api.GET("/apps/:id", s.requireAuth, s.getApp)
-	api.PATCH("/apps/:id", s.requireAuth, s.requireCSRF, s.sensitiveRateLimit, s.updateApp)
-	api.DELETE("/apps/:id", s.requireAuth, s.requireCSRF, s.sensitiveRateLimit, s.deleteApp)
-	api.POST("/apps/:id/rotate-secret", s.requireAuth, s.requireCSRF, s.sensitiveRateLimit, s.rotateAppSecret)
-	api.GET("/authorizations", s.requireAuth, s.listAuthorizations)
-	api.GET("/grants", s.requireAuth, s.listGrants)
-	api.DELETE("/grants/:id", s.requireAuth, s.requireCSRF, s.sensitiveRateLimit, s.revokeGrant)
-	api.GET("/profile", s.requireAuth, s.profile)
-	api.PATCH("/profile", s.requireAuth, s.requireCSRF, s.sensitiveRateLimit, s.updateProfile)
+	api.GET("/oauth/consent", s.requireAuth, s.requireSession, s.oauthConsentInfo)
+	api.POST("/oauth/consent", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.oauthConsent)
+	api.GET("/dashboard", s.requireAuth, s.requirePATScope("profile"), s.dashboard)
+	api.GET("/apps", s.requireAuth, s.requirePATScope("apps:read"), s.listApps)
+	api.POST("/apps", s.requireAuth, s.requirePATScope("apps:write"), s.requireCSRF, s.sensitiveRateLimit, s.createApp)
+	api.GET("/apps/:id", s.requireAuth, s.requirePATScope("apps:read"), s.getApp)
+	api.PATCH("/apps/:id", s.requireAuth, s.requirePATScope("apps:write"), s.requireCSRF, s.sensitiveRateLimit, s.updateApp)
+	api.DELETE("/apps/:id", s.requireAuth, s.requirePATScope("apps:write"), s.requireCSRF, s.sensitiveRateLimit, s.deleteApp)
+	api.POST("/apps/:id/rotate-secret", s.requireAuth, s.requirePATScope("apps:write"), s.requireCSRF, s.sensitiveRateLimit, s.rotateAppSecret)
+	api.GET("/authorizations", s.requireAuth, s.requirePATScope("audit:read"), s.listAuthorizations)
+	api.GET("/grants", s.requireAuth, s.requirePATScope("grants:read"), s.listGrants)
+	api.DELETE("/grants/:id", s.requireAuth, s.requirePATScope("grants:write"), s.requireCSRF, s.sensitiveRateLimit, s.revokeGrant)
+	api.GET("/profile", s.requireAuth, s.requirePATScope("profile"), s.profile)
+	api.PATCH("/profile", s.requireAuth, s.requirePATScope("profile:write"), s.requireCSRF, s.sensitiveRateLimit, s.updateProfile)
 	api.POST("/profile/emails/prepare", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.prepareProfileEmail)
 	api.POST("/profile/emails/complete", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.completeProfileEmail)
 	api.DELETE("/profile/bindings/email/:id", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.deleteOwnEmailBinding)
@@ -187,11 +199,11 @@ func (s *Server) Router() *gin.Engine {
 	api.POST("/profile/mfa/disable", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.disableMFA)
 	api.GET("/profile/sessions", s.requireAuth, s.requireSession, s.listSessions)
 	api.DELETE("/profile/sessions/:id", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.revokeSession)
-	api.GET("/profile/tokens", s.requireAuth, s.listPATs)
+	api.GET("/profile/tokens", s.requireAuth, s.requireSession, s.listPATs)
 	api.POST("/profile/tokens", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.createPAT)
 	api.DELETE("/profile/tokens/:id", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.revokePAT)
-	api.GET("/profile/audit", s.requireAuth, s.listAudit)
-	api.GET("/profile/export", s.requireAuth, s.exportData)
+	api.GET("/profile/audit", s.requireAuth, s.requirePATScope("audit:read"), s.listAudit)
+	api.GET("/profile/export", s.requireAuth, s.requireSession, s.exportData)
 	api.DELETE("/profile", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.deleteAccount)
 	api.POST("/profile/merge/start", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.startAccountMerge)
 	api.GET("/providers", s.listProviders)
@@ -212,6 +224,8 @@ func (s *Server) Router() *gin.Engine {
 	admin.GET("/providers", s.adminListProviders)
 	admin.PATCH("/providers/:id", s.requireCSRF, s.sensitiveRateLimit, s.adminUpdateProvider)
 	admin.POST("/providers/:id/test", s.requireCSRF, s.sensitiveRateLimit, s.adminTestProvider)
+	admin.GET("/lifecycle/events", s.adminListLifecycleEvents)
+	admin.POST("/lifecycle/events/:id/retry", s.requireCSRF, s.sensitiveRateLimit, s.adminRetryLifecycleEvent)
 
 	router.NoRoute(s.serveWeb)
 	return router
@@ -229,8 +243,23 @@ func (s *Server) requestContext(c *gin.Context) {
 	c.Next()
 }
 
-func (s *Server) health(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "sso"})
+func (s *Server) liveness(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "xem-sso"})
+}
+
+func (s *Server) readiness(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+	defer cancel()
+	sqlDB, err := s.DB.DB()
+	if err != nil || sqlDB.PingContext(ctx) != nil || model.SchemaReady(s.DB) != nil || s.OIDCKey == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable"})
+		return
+	}
+	if s.Cfg.RateLimitEnabled && (s.Redis == nil || s.Redis.Ping(ctx).Err() != nil) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "xem-sso", "schema_version": model.CurrentSchemaVersion})
 }
 
 func (s *Server) serveWeb(c *gin.Context) {
@@ -290,6 +319,29 @@ func (s *Server) requireSession(c *gin.Context) {
 		return
 	}
 	c.Next()
+}
+
+func (s *Server) requirePATScope(required ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		value, ok := c.Get("pat")
+		if !ok {
+			c.Next()
+			return
+		}
+		pat := value.(*model.PersonalAccessToken)
+		allowed := make(map[string]bool)
+		for _, scope := range strings.Fields(pat.Scopes) {
+			allowed[scope] = true
+		}
+		for _, scope := range required {
+			if !allowed[scope] {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "PAT 权限不足"})
+				c.Abort()
+				return
+			}
+		}
+		c.Next()
+	}
 }
 
 func (s *Server) requireAdmin(c *gin.Context) {
@@ -391,6 +443,16 @@ func (s *Server) user(c *gin.Context) *model.User       { return c.MustGet("user
 func (s *Server) session(c *gin.Context) *model.Session { return c.MustGet("session").(*model.Session) }
 func publicUser(user *model.User) gin.H {
 	return gin.H{"id": user.ID, "username": user.Username, "display_name": user.DisplayName, "avatar_url": user.AvatarURL, "locale": user.Locale, "mfa_enabled": user.MFAEnabled, "password_configured": user.PasswordConfigured, "role": user.Role, "status": user.Status, "security_email_enabled": user.SecurityEmailEnabled, "created_at": user.CreatedAt, "last_login_at": user.LastLoginAt}
+}
+
+func (s *Server) isBootstrapAdminEmail(email string) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	for _, allowed := range s.Cfg.BootstrapAdminEmails {
+		if email == allowed {
+			return true
+		}
+	}
+	return false
 }
 func clientIP(c *gin.Context) string {
 	return c.ClientIP()

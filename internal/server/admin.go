@@ -179,7 +179,6 @@ func (s *Server) adminUpdateUser(c *gin.Context) {
 		if *input.Status == "deactivated" {
 			now := time.Now()
 			updates["deactivated_at"] = &now
-			_ = s.DB.Model(&model.Session{}).Where("user_id = ? AND revoked_at IS NULL", user.ID).Update("revoked_at", &now).Error
 		} else {
 			updates["deactivated_at"] = nil
 			updates["merged_into_user_id"] = nil
@@ -193,9 +192,40 @@ func (s *Server) adminUpdateUser(c *gin.Context) {
 		if updateErr := tx.Model(&user).Updates(updates).Error; updateErr != nil {
 			return updateErr
 		}
-		if input.Password != nil && *input.Password != "" {
+		if input.Password != nil && *input.Password != "" || input.Status != nil && *input.Status == "deactivated" {
 			now := time.Now()
-			return tx.Model(&model.Session{}).Where("user_id = ? AND revoked_at IS NULL", user.ID).Update("revoked_at", &now).Error
+			if err := tx.Model(&model.Session{}).Where("user_id = ? AND revoked_at IS NULL", user.ID).Update("revoked_at", &now).Error; err != nil {
+				return err
+			}
+		}
+		if input.Status != nil && *input.Status == "deactivated" {
+			now := time.Now()
+			if err := tx.Model(&model.PersonalAccessToken{}).Where("user_id = ? AND revoked_at IS NULL", user.ID).Update("revoked_at", &now).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&model.Grant{}).Where("user_id = ? AND revoked_at IS NULL", user.ID).Update("revoked_at", &now).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&model.OAuthApplication{}).Where("owner_id = ? AND disabled_at IS NULL", user.ID).Update("disabled_at", &now).Error; err != nil {
+				return err
+			}
+			if err := revokeOAuthTokens(tx, "user_id = ? OR app_id IN (?)", user.ID, tx.Model(&model.OAuthApplication{}).Select("id").Where("owner_id = ?", user.ID)); err != nil {
+				return err
+			}
+		}
+		if input.Status != nil && *input.Status != user.Status {
+			eventType := "account.reactivated"
+			if *input.Status == "deactivated" {
+				eventType = "account.deactivated"
+			}
+			if err := s.recordLifecycleEvent(tx, user.ID, eventType, nil); err != nil {
+				return err
+			}
+		}
+		if input.Role != nil && *input.Role != user.Role {
+			if err := s.recordLifecycleEvent(tx, user.ID, "account.role_changed", map[string]any{"role": *input.Role}); err != nil {
+				return err
+			}
 		}
 		return nil
 	})

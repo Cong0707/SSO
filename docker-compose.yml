@@ -29,6 +29,25 @@ services:
       timeout: 3s
       retries: 20
 
+  migrate:
+    build: .
+    restart: "no"
+    command: ["/app/sso-migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SSO_DATABASE_DRIVER: postgres
+      SSO_DATABASE_DSN: "host=postgres user=${POSTGRES_USER:-sso} password=${POSTGRES_PASSWORD:-sso-dev-password} dbname=${POSTGRES_DB:-sso} port=5432 sslmode=disable TimeZone=UTC"
+      SSO_AUTO_MIGRATE: "false"
+      SSO_RATE_LIMIT_ENABLED: "false"
+      SSO_DATA_DIR: /app/data
+      SSO_MASTER_KEY_FILE: /app/data/master.key
+      SSO_OIDC_SIGNING_KEY_FILE: /app/data/oidc-signing.pem
+      SSO_ALLOW_KEY_GENERATION: "true"
+    volumes:
+      - sso-data:/app/data
+
   sso:
     build: .
     restart: unless-stopped
@@ -37,6 +56,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
     environment:
@@ -46,6 +67,8 @@ services:
       SSO_EMAIL_DEBUG: ${SSO_EMAIL_DEBUG:-false}
       SSO_DATABASE_DRIVER: postgres
       SSO_DATABASE_DSN: "host=postgres user=${POSTGRES_USER:-sso} password=${POSTGRES_PASSWORD:-sso-dev-password} dbname=${POSTGRES_DB:-sso} port=5432 sslmode=disable TimeZone=UTC"
+      SSO_AUTO_MIGRATE: "false"
+      SSO_BOOTSTRAP_ADMIN_EMAILS: ${SSO_BOOTSTRAP_ADMIN_EMAILS:-admin@example.com}
       SSO_RATE_LIMIT_ENABLED: ${SSO_RATE_LIMIT_ENABLED:-true}
       SSO_REDIS_ADDR: redis:6379
       SSO_REDIS_PASSWORD: ${REDIS_PASSWORD:-sso-dev-redis-password}

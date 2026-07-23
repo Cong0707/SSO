@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -248,7 +247,12 @@ func (s *Server) setupMFA(c *gin.Context) {
 		s.serveError(c, http.StatusInternalServerError, "保存 MFA 密钥失败")
 		return
 	}
-	if err := s.DB.Model(user).Updates(map[string]any{"mfa_secret_encrypted": encrypted, "mfa_enabled": false, "mfa_backup_code_hashes": "[]"}).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", user.ID).Delete(&model.MFABackupCode{}).Error; err != nil {
+			return err
+		}
+		return tx.Model(user).Updates(map[string]any{"mfa_secret_encrypted": encrypted, "mfa_enabled": false, "mfa_backup_code_hashes": "[]"}).Error
+	}); err != nil {
 		s.serveError(c, http.StatusInternalServerError, "保存 MFA 密钥失败")
 		return
 	}
@@ -270,7 +274,7 @@ func (s *Server) enableMFA(c *gin.Context) {
 		return
 	}
 	codes := make([]string, 10)
-	hashes := make([]string, 10)
+	backupRecords := make([]model.MFABackupCode, 10)
 	for index := range codes {
 		raw, tokenErr := security.RandomToken(7)
 		if tokenErr != nil {
@@ -278,10 +282,17 @@ func (s *Server) enableMFA(c *gin.Context) {
 			return
 		}
 		codes[index] = strings.ToUpper(raw[:10])
-		hashes[index] = security.HashToken(codes[index])
+		backupRecords[index] = model.MFABackupCode{UserID: user.ID, CodeHash: security.HashToken(codes[index])}
 	}
-	encoded, _ := json.Marshal(hashes)
-	if err := s.DB.Model(user).Updates(map[string]any{"mfa_enabled": true, "mfa_backup_code_hashes": string(encoded)}).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", user.ID).Delete(&model.MFABackupCode{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&backupRecords).Error; err != nil {
+			return err
+		}
+		return tx.Model(user).Updates(map[string]any{"mfa_enabled": true, "mfa_backup_code_hashes": "[]"}).Error
+	}); err != nil {
 		s.serveError(c, http.StatusInternalServerError, "启用 MFA 失败")
 		return
 	}
@@ -304,7 +315,12 @@ func (s *Server) disableMFA(c *gin.Context) {
 		s.serveError(c, http.StatusUnauthorized, "密码或验证码错误")
 		return
 	}
-	if err := s.DB.Model(user).Updates(map[string]any{"mfa_enabled": false, "mfa_secret_encrypted": "", "mfa_backup_code_hashes": "[]"}).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", user.ID).Delete(&model.MFABackupCode{}).Error; err != nil {
+			return err
+		}
+		return tx.Model(user).Updates(map[string]any{"mfa_enabled": false, "mfa_secret_encrypted": "", "mfa_backup_code_hashes": "[]"}).Error
+	}); err != nil {
 		s.serveError(c, http.StatusInternalServerError, "停用 MFA 失败")
 		return
 	}
@@ -385,6 +401,23 @@ func (s *Server) createPAT(c *gin.Context) {
 	if scopes == "" {
 		scopes = "profile"
 	}
+	allowedScopes := map[string]bool{
+		"profile": true, "profile:write": true, "apps:read": true, "apps:write": true,
+		"grants:read": true, "grants:write": true, "audit:read": true,
+	}
+	canonicalScopes := make([]string, 0)
+	seenScopes := make(map[string]bool)
+	for _, scope := range strings.Fields(scopes) {
+		if !allowedScopes[scope] {
+			s.serveError(c, http.StatusBadRequest, "PAT Scope 无效")
+			return
+		}
+		if !seenScopes[scope] {
+			seenScopes[scope] = true
+			canonicalScopes = append(canonicalScopes, scope)
+		}
+	}
+	scopes = strings.Join(canonicalScopes, " ")
 	token := model.PersonalAccessToken{UserID: s.user(c).ID, Name: input.Name, Prefix: raw[:16], TokenHash: security.HashToken(raw), Scopes: scopes, ExpiresAt: input.ExpiresAt}
 	if err := s.DB.Create(&token).Error; err != nil {
 		s.serveError(c, http.StatusInternalServerError, "创建令牌失败")
@@ -467,6 +500,12 @@ func (s *Server) deleteAccount(c *gin.Context) {
 		if err := tx.Model(&model.OAuthApplication{}).Where("owner_id = ? AND disabled_at IS NULL", user.ID).Update("disabled_at", &now).Error; err != nil {
 			return err
 		}
+		if err := revokeOAuthTokens(tx, "user_id = ? OR app_id IN (?)", user.ID, tx.Model(&model.OAuthApplication{}).Select("id").Where("owner_id = ?", user.ID)); err != nil {
+			return err
+		}
+		if err := s.recordLifecycleEvent(tx, user.ID, "account.deactivated", nil); err != nil {
+			return err
+		}
 		return tx.Create(&model.AuditEvent{UserID: user.ID, Action: "account.deactivated", IP: clientIP(c), UserAgent: c.Request.UserAgent()}).Error
 	})
 	if err != nil {
@@ -525,7 +564,7 @@ func (s *Server) uploadAvatar(c *gin.Context) {
 		s.serveError(c, http.StatusBadRequest, "仅支持 JPG、PNG 或 WebP")
 		return
 	}
-	dir := filepath.Join(filepath.Dir(s.Cfg.DatabaseDSN), "media", "avatars")
+	dir := filepath.Join(s.Cfg.DataDir, "media", "avatars")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		s.serveError(c, http.StatusInternalServerError, "创建头像目录失败")
 		return
@@ -551,7 +590,7 @@ func (s *Server) avatarFile(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
-	path := filepath.Join(filepath.Dir(s.Cfg.DatabaseDSN), "media", "avatars", name)
+	path := filepath.Join(s.Cfg.DataDir, "media", "avatars", name)
 	if _, err := os.Stat(path); err != nil {
 		c.Status(http.StatusNotFound)
 		return

@@ -57,6 +57,14 @@ func TestMergeAccountsPreservesSourceAndMovesBindings(t *testing.T) {
 	if err := db.First(&source, second.ID).Error; err != nil || source.Status != "merged" || source.MergedIntoUserID == nil || *source.MergedIntoUserID != first.ID {
 		t.Fatalf("source account was not retained as merged: source=%#v err=%v", source, err)
 	}
+	var alias model.AccountAlias
+	if err := db.Where("source_user_id = ?", second.ID).First(&alias).Error; err != nil || alias.CanonicalUserID != first.ID {
+		t.Fatalf("merged subject alias was not recorded: alias=%#v err=%v", alias, err)
+	}
+	var lifecycleCount int64
+	if err := db.Model(&model.LifecycleEvent{}).Where("user_id IN ?", []uint64{first.ID, second.ID}).Count(&lifecycleCount).Error; err != nil || lifecycleCount != 2 {
+		t.Fatalf("merge lifecycle events were not recorded: count=%d err=%v", lifecycleCount, err)
+	}
 	var movedEmails, movedIdentities int64
 	_ = db.Model(&model.UserEmail{}).Where("user_id = ?", first.ID).Count(&movedEmails).Error
 	_ = db.Model(&model.UpstreamIdentity{}).Where("user_id = ?", first.ID).Count(&movedIdentities).Error

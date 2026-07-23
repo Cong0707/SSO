@@ -3,8 +3,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: sso-data
 spec:
-  accessModes: ["ReadWriteOnce"]
+  storageClassName: cephfs
+  accessModes: ["ReadWriteMany"]
   resources:
     requests:
       storage: 2Gi
-

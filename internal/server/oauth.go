@@ -1,7 +1,9 @@
 package server
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -14,7 +16,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-oauth2/oauth2/v4"
 	oauthErrors "github.com/go-oauth2/oauth2/v4/errors"
+	oauthServer "github.com/go-oauth2/oauth2/v4/server"
 	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
 var defaultScopes = []string{"openid", "profile", "email"}
@@ -68,14 +72,9 @@ func (s *Server) oauthUserAuthorization(_ http.ResponseWriter, r *http.Request) 
 
 func (s *Server) oauthAuthorize(c *gin.Context) {
 	r := c.Request
-	request, err := s.OAuth.ValidationAuthorizeRequest(r)
+	request, app, err := s.validateAuthorizationRequest(r)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": err.Error()})
-		return
-	}
-	var app model.OAuthApplication
-	if err := s.DB.Where("client_id = ? AND disabled_at IS NULL", request.ClientID).First(&app).Error; err != nil || app.RedirectURI != request.RedirectURI {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": "redirect_uri 不匹配"})
 		return
 	}
 	if !scopeSubset(request.Scope, splitScopes(app.AllowedScopes)) {
@@ -94,7 +93,21 @@ func (s *Server) oauthAuthorize(c *gin.Context) {
 		s.serveError(c, http.StatusInternalServerError, "读取授权状态失败")
 		return
 	}
-	if (grant.ID == 0 || !scopeSubset(request.Scope, splitScopes(grant.Scopes)) || promptConsent) && r.URL.Query().Get("consent") != "1" {
+	requiresConsent := grant.ID == 0 || !scopeSubset(request.Scope, splitScopes(grant.Scopes)) || promptConsent
+	if s.oauthApprovalPending(user.ID, app.ID, request.Scope, r.URL) {
+		requiresConsent = true
+	}
+	approval := strings.TrimSpace(r.URL.Query().Get("approval"))
+	if approval != "" {
+		if !s.consumeOAuthApproval(approval, user.ID, app.ID, request.Scope, r.URL) {
+			if r.URL.Query().Get("prompt") == "none" {
+				c.Redirect(http.StatusFound, addOAuthError(app.RedirectURI, request.State, "consent_required"))
+				return
+			}
+			c.Redirect(http.StatusFound, "/consent?request="+url.QueryEscape(r.URL.String()))
+			return
+		}
+	} else if requiresConsent {
 		if r.URL.Query().Get("prompt") == "none" {
 			c.Redirect(http.StatusFound, addOAuthError(app.RedirectURI, request.State, "consent_required"))
 			return
@@ -116,20 +129,12 @@ func (s *Server) oauthConsentInfo(c *gin.Context) {
 		s.serveError(c, http.StatusBadRequest, "缺少授权请求")
 		return
 	}
-	u, err := url.Parse(raw)
-	if err != nil || u.Path != "/oauth/authorize" {
+	request, app, err := s.validateRawAuthorizationRequest(raw)
+	if err != nil {
 		s.serveError(c, http.StatusBadRequest, "授权请求无效")
 		return
 	}
-	var app model.OAuthApplication
-	if err := s.DB.Where("client_id = ? AND disabled_at IS NULL", u.Query().Get("client_id")).First(&app).Error; err != nil {
-		s.serveError(c, http.StatusBadRequest, "应用不存在")
-		return
-	}
-	scopes := strings.Fields(u.Query().Get("scope"))
-	if len(scopes) == 0 {
-		scopes = defaultScopes
-	}
+	scopes := strings.Fields(request.Scope)
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"app": gin.H{"id": app.ID, "name": app.Name, "description": app.Description, "logo_url": app.LogoURL, "homepage": app.Homepage}, "scopes": scopes, "request": raw}})
 }
 
@@ -142,79 +147,161 @@ func (s *Server) oauthConsent(c *gin.Context) {
 		s.serveError(c, http.StatusBadRequest, "请求格式错误")
 		return
 	}
-	u, err := url.Parse(input.Request)
-	if err != nil || u.Path != "/oauth/authorize" {
+	request, app, err := s.validateRawAuthorizationRequest(input.Request)
+	if err != nil {
 		s.serveError(c, http.StatusBadRequest, "授权请求无效")
 		return
 	}
-	var app model.OAuthApplication
-	if err := s.DB.Where("client_id = ? AND disabled_at IS NULL", u.Query().Get("client_id")).First(&app).Error; err != nil || app.RedirectURI != u.Query().Get("redirect_uri") {
-		s.serveError(c, http.StatusBadRequest, "应用授权请求无效")
-		return
-	}
+	u := request.Request.URL
 	user := s.user(c)
-	scopes := strings.Fields(u.Query().Get("scope"))
-	if len(scopes) == 0 {
-		scopes = defaultScopes
-	}
-	if !scopeSubset(strings.Join(scopes, " "), splitScopes(app.AllowedScopes)) {
-		s.serveError(c, http.StatusBadRequest, "授权范围无效")
-		return
-	}
+	scopes := strings.Fields(request.Scope)
 	if !input.Approved {
 		_ = s.DB.Create(&model.AuthorizationLog{AppID: app.ID, UserID: user.ID, Action: "authorize", Scopes: strings.Join(scopes, " "), IP: clientIP(c), Status: "denied"}).Error
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"redirect_url": addOAuthError(app.RedirectURI, u.Query().Get("state"), "access_denied")}})
 		return
 	}
-	var grant model.Grant
-	if err := s.DB.Where("user_id = ? AND app_id = ?", user.ID, app.ID).Limit(1).Find(&grant).Error; err == nil && grant.ID == 0 {
-		grant = model.Grant{UserID: user.ID, AppID: app.ID, Scopes: strings.Join(scopes, " ")}
-		if err := s.DB.Create(&grant).Error; err != nil {
-			s.serveError(c, http.StatusInternalServerError, "保存授权失败")
-			return
-		}
-	} else if err != nil {
-		s.serveError(c, http.StatusInternalServerError, "读取授权失败")
+	approvalRaw, err := security.RandomToken(32)
+	if err != nil {
+		s.serveError(c, http.StatusInternalServerError, "创建授权批准失败")
 		return
-	} else {
-		grant.Scopes = mergeScopes(splitScopes(grant.Scopes), scopes)
-		grant.RevokedAt = nil
-		if err := s.DB.Save(&grant).Error; err != nil {
-			s.serveError(c, http.StatusInternalServerError, "更新授权失败")
-			return
-		}
 	}
 	query := u.Query()
-	query.Set("consent", "1")
+	query.Del("approval")
+	query.Del("consent")
+	u.RawQuery = query.Encode()
+	approval := model.OAuthApproval{
+		TokenHash: security.HashToken(approvalRaw), UserID: user.ID, AppID: app.ID,
+		Scopes: strings.Join(scopes, " "), RequestHash: oauthRequestHash(u),
+		StateHash: security.HashToken(query.Get("state")), ExpiresAt: time.Now().Add(2 * time.Minute),
+	}
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		var grant model.Grant
+		if err := tx.Where("user_id = ? AND app_id = ?", user.ID, app.ID).Limit(1).Find(&grant).Error; err != nil {
+			return err
+		}
+		if grant.ID == 0 {
+			grant = model.Grant{UserID: user.ID, AppID: app.ID, Scopes: strings.Join(scopes, " ")}
+			if err := tx.Create(&grant).Error; err != nil {
+				return err
+			}
+		} else {
+			grant.Scopes = mergeScopes(splitScopes(grant.Scopes), scopes)
+			grant.RevokedAt = nil
+			if err := tx.Save(&grant).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Create(&approval).Error
+	}); err != nil {
+		s.serveError(c, http.StatusInternalServerError, "保存授权批准失败")
+		return
+	}
+	query.Set("approval", approvalRaw)
 	u.RawQuery = query.Encode()
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"redirect_url": u.String()}})
 }
 
 func (s *Server) oauthToken(c *gin.Context) {
-	if err := c.Request.ParseForm(); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+	clientID, clientSecret, err := clientInfoHandler(c.Request)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_client"})
 		return
 	}
-	clientID := c.Request.Form.Get("client_id")
-	if basicID, _, ok := c.Request.BasicAuth(); ok {
-		clientID = basicID
+	client, err := s.Clients.GetByID(c.Request.Context(), clientID)
+	if err != nil || !client.(clientInfo).VerifyPassword(clientSecret) {
+		c.Header("WWW-Authenticate", `Basic realm="oauth/token"`)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_client"})
+		return
 	}
 	if !s.enforceRateLimitPair(c, "oauth_token", clientID, s.Cfg.RateLimitOAuthToken, time.Minute) {
 		return
+	}
+	if c.Request.Form.Get("grant_type") == "refresh_token" {
+		refreshToken := c.Request.Form.Get("refresh_token")
+		store, ok := s.Tokens.(*databaseTokenStore)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_grant"})
+			return
+		}
+		claimedContext, claimed, err := store.claimRefresh(c.Request.Context(), refreshToken, clientID)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "temporarily_unavailable"})
+			return
+		}
+		if !claimed {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_grant"})
+			return
+		}
+		c.Request = c.Request.WithContext(claimedContext)
 	}
 	if err := s.OAuth.HandleTokenRequest(c.Writer, c.Request); err != nil {
 		return
 	}
 }
 
-func (s *Server) oauthRevoke(c *gin.Context) {
+func (s *Server) oauthIntrospect(c *gin.Context) {
+	clientID, clientSecret, err := clientInfoHandler(c.Request)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"active": false})
+		return
+	}
+	client, err := s.Clients.GetByID(c.Request.Context(), clientID)
+	if err != nil || !client.(clientInfo).VerifyPassword(clientSecret) {
+		c.JSON(http.StatusUnauthorized, gin.H{"active": false})
+		return
+	}
 	if err := c.Request.ParseForm(); err != nil {
-		c.Status(http.StatusOK)
+		c.JSON(http.StatusBadRequest, gin.H{"active": false})
+		return
+	}
+	raw := c.Request.Form.Get("token")
+	info, err := s.Tokens.GetByAccess(c.Request.Context(), raw)
+	if err != nil || info == nil {
+		info, err = s.Tokens.GetByRefresh(c.Request.Context(), raw)
+	}
+	if err != nil || info == nil || info.GetClientID() != clientID {
+		c.JSON(http.StatusOK, gin.H{"active": false})
+		return
+	}
+	expiresAt := info.GetAccessCreateAt().Add(info.GetAccessExpiresIn())
+	if info.GetAccess() != raw {
+		expiresAt = info.GetRefreshCreateAt().Add(info.GetRefreshExpiresIn())
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"active": true, "client_id": info.GetClientID(), "sub": info.GetUserID(),
+		"scope": info.GetScope(), "exp": expiresAt.Unix(), "token_type": "Bearer",
+	})
+}
+
+func (s *Server) oauthRevoke(c *gin.Context) {
+	clientID, clientSecret, err := clientInfoHandler(c.Request)
+	if err != nil {
+		c.Header("WWW-Authenticate", `Basic realm="oauth/revoke"`)
+		c.Status(http.StatusUnauthorized)
+		return
+	}
+	client, err := s.Clients.GetByID(c.Request.Context(), clientID)
+	if err != nil || !client.(clientInfo).VerifyPassword(clientSecret) {
+		c.Header("WWW-Authenticate", `Basic realm="oauth/revoke"`)
+		c.Status(http.StatusUnauthorized)
 		return
 	}
 	token := c.Request.Form.Get("token")
 	hint := c.Request.Form.Get("token_type_hint")
 	if token == "" {
+		c.Status(http.StatusOK)
+		return
+	}
+	var info oauth2.TokenInfo
+	if hint == "refresh_token" {
+		info, _ = s.Tokens.GetByRefresh(c.Request.Context(), token)
+	} else {
+		info, _ = s.Tokens.GetByAccess(c.Request.Context(), token)
+		if info == nil {
+			info, _ = s.Tokens.GetByRefresh(c.Request.Context(), token)
+		}
+	}
+	if info == nil || info.GetClientID() != clientID {
 		c.Status(http.StatusOK)
 		return
 	}
@@ -224,6 +311,41 @@ func (s *Server) oauthRevoke(c *gin.Context) {
 		_ = s.OAuth.Manager.RemoveRefreshToken(c.Request.Context(), token)
 	}
 	c.Status(http.StatusOK)
+}
+
+func (s *Server) validateAuthorizationRequest(r *http.Request) (*oauthServer.AuthorizeRequest, model.OAuthApplication, error) {
+	query := r.URL.Query()
+	if strings.TrimSpace(query.Get("scope")) == "" {
+		query.Set("scope", strings.Join(defaultScopes, " "))
+		r.URL.RawQuery = query.Encode()
+	}
+	request, err := s.OAuth.ValidationAuthorizeRequest(r)
+	if err != nil {
+		return nil, model.OAuthApplication{}, err
+	}
+	var app model.OAuthApplication
+	if err := s.DB.Where("client_id = ? AND disabled_at IS NULL", request.ClientID).First(&app).Error; err != nil {
+		return nil, model.OAuthApplication{}, oauthErrors.ErrInvalidClient
+	}
+	if app.RedirectURI != request.RedirectURI {
+		return nil, model.OAuthApplication{}, oauthErrors.ErrInvalidRedirectURI
+	}
+	if !scopeSubset(request.Scope, splitScopes(app.AllowedScopes)) {
+		return nil, model.OAuthApplication{}, oauthErrors.ErrInvalidScope
+	}
+	return request, app, nil
+}
+
+func (s *Server) validateRawAuthorizationRequest(raw string) (*oauthServer.AuthorizeRequest, model.OAuthApplication, error) {
+	u, err := url.Parse(raw)
+	if err != nil || u.IsAbs() || u.Host != "" || u.Path != "/oauth/authorize" {
+		return nil, model.OAuthApplication{}, oauthErrors.ErrInvalidRequest
+	}
+	request, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, model.OAuthApplication{}, oauthErrors.ErrInvalidRequest
+	}
+	return s.validateAuthorizationRequest(request)
 }
 
 func (s *Server) oauthUserInfo(c *gin.Context) {
@@ -306,7 +428,48 @@ func (s *Server) emailClaims(userID uint64) map[string]interface{} {
 
 func (s *Server) oidcDiscovery(c *gin.Context) {
 	issuer := s.Cfg.Issuer
-	c.JSON(http.StatusOK, gin.H{"issuer": issuer, "authorization_endpoint": issuer + "/oauth/authorize", "token_endpoint": issuer + "/oauth/token", "userinfo_endpoint": issuer + "/oauth/userinfo", "jwks_uri": issuer + "/oauth/jwks.json", "revocation_endpoint": issuer + "/oauth/revoke", "scopes_supported": defaultScopes, "response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code", "refresh_token"}, "subject_types_supported": []string{"public"}, "id_token_signing_alg_values_supported": []string{"RS256"}, "code_challenge_methods_supported": []string{"S256", "plain"}})
+	c.JSON(http.StatusOK, gin.H{"issuer": issuer, "authorization_endpoint": issuer + "/oauth/authorize", "token_endpoint": issuer + "/oauth/token", "userinfo_endpoint": issuer + "/oauth/userinfo", "jwks_uri": issuer + "/oauth/jwks.json", "revocation_endpoint": issuer + "/oauth/revoke", "introspection_endpoint": issuer + "/oauth/introspect", "scopes_supported": defaultScopes, "response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code", "refresh_token"}, "subject_types_supported": []string{"public"}, "id_token_signing_alg_values_supported": []string{"RS256"}, "code_challenge_methods_supported": []string{"S256"}})
+}
+
+func (s *Server) consumeOAuthApproval(raw string, userID, appID uint64, scopes string, requestURL *url.URL) bool {
+	if raw == "" {
+		return false
+	}
+	normalized := *requestURL
+	query := normalized.Query()
+	query.Del("approval")
+	query.Del("consent")
+	normalized.RawQuery = query.Encode()
+	now := time.Now()
+	result := s.DB.Model(&model.OAuthApproval{}).
+		Where("token_hash = ? AND user_id = ? AND app_id = ? AND scopes = ? AND request_hash = ? AND state_hash = ? AND used_at IS NULL AND expires_at > ?",
+			security.HashToken(raw), userID, appID, strings.Join(strings.Fields(scopes), " "), oauthRequestHash(&normalized), security.HashToken(query.Get("state")), now).
+		Update("used_at", &now)
+	return result.Error == nil && result.RowsAffected == 1
+}
+
+func (s *Server) oauthApprovalPending(userID, appID uint64, scopes string, requestURL *url.URL) bool {
+	normalized := *requestURL
+	query := normalized.Query()
+	query.Del("approval")
+	query.Del("consent")
+	normalized.RawQuery = query.Encode()
+	var count int64
+	err := s.DB.Model(&model.OAuthApproval{}).
+		Where("user_id = ? AND app_id = ? AND scopes = ? AND request_hash = ? AND state_hash = ? AND used_at IS NULL AND expires_at > ?",
+			userID, appID, strings.Join(strings.Fields(scopes), " "), oauthRequestHash(&normalized), security.HashToken(query.Get("state")), time.Now()).
+		Count(&count).Error
+	return err == nil && count > 0
+}
+
+func oauthRequestHash(value *url.URL) string {
+	normalized := *value
+	query := normalized.Query()
+	query.Del("approval")
+	query.Del("consent")
+	normalized.RawQuery = query.Encode()
+	sum := sha256.Sum256([]byte(normalized.RequestURI()))
+	return hex.EncodeToString(sum[:])
 }
 
 func (s *Server) jwks(c *gin.Context) {

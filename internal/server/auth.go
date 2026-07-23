@@ -2,7 +2,6 @@ package server
 
 import (
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -196,12 +195,8 @@ func (s *Server) registerComplete(c *gin.Context) {
 		if result.Error != nil || result.RowsAffected != 1 {
 			return errors.New("注册流程已被使用")
 		}
-		var count int64
-		if err := tx.Model(&model.User{}).Count(&count).Error; err != nil {
-			return err
-		}
 		role := "user"
-		if count == 0 {
+		if s.isBootstrapAdminEmail(flow.Email) {
 			role = "admin"
 		}
 		user = model.User{
@@ -244,18 +239,24 @@ func (s *Server) loginPassword(c *gin.Context) {
 		s.serveError(c, http.StatusBadRequest, "登录流程已过期，请返回重试")
 		return
 	}
+	result := s.DB.Model(&model.AuthFlow{}).
+		Where("id = ? AND purpose = ? AND used_at IS NULL AND expires_at > ? AND attempts < ?", flow.ID, "identify_login", time.Now(), 8).
+		UpdateColumn("attempts", gorm.Expr("attempts + 1"))
+	if result.Error != nil {
+		s.serveError(c, http.StatusInternalServerError, "更新登录流程失败")
+		return
+	}
+	if result.RowsAffected != 1 {
+		s.serveError(c, http.StatusTooManyRequests, "失败次数过多，请重新开始登录")
+		return
+	}
 	if !s.enforceRateLimitPair(c, "password_login", fmt.Sprintf("user:%d", *flow.UserID), s.Cfg.RateLimitLogin, 5*time.Minute) {
 		return
 	}
 	var user model.User
 	if s.DB.First(&user, *flow.UserID).Error != nil || user.Status != "active" || !user.PasswordConfigured || !security.VerifyPassword(user.PasswordHash, input.Password) {
-		_ = s.DB.Model(&flow).UpdateColumn("attempts", gorm.Expr("attempts + 1")).Error
 		s.audit(c, "login.failed", *flow.UserID, "")
 		s.serveError(c, http.StatusUnauthorized, "密码错误")
-		return
-	}
-	if flow.Attempts >= 8 {
-		s.serveError(c, http.StatusTooManyRequests, "失败次数过多，请重新开始登录")
 		return
 	}
 	if strings.HasPrefix(user.PasswordHash, "$2a$") || strings.HasPrefix(user.PasswordHash, "$2b$") || strings.HasPrefix(user.PasswordHash, "$2y$") {
@@ -452,19 +453,11 @@ func (s *Server) verifyMFA(user *model.User, code string) bool {
 	if err == nil && totp.Validate(code, secret) {
 		return true
 	}
-	var hashes []string
-	if json.Unmarshal([]byte(user.MFABackupCodeHashes), &hashes) != nil {
-		return false
-	}
-	for index, hash := range hashes {
-		if security.ConstantTimeTokenMatch(hash, strings.ToUpper(code)) {
-			hashes = append(hashes[:index], hashes[index+1:]...)
-			encoded, _ := json.Marshal(hashes)
-			_ = s.DB.Model(user).Update("mfa_backup_code_hashes", string(encoded)).Error
-			return true
-		}
-	}
-	return false
+	now := time.Now()
+	result := s.DB.Model(&model.MFABackupCode{}).
+		Where("user_id = ? AND code_hash = ? AND used_at IS NULL", user.ID, security.HashToken(strings.ToUpper(code))).
+		Update("used_at", &now)
+	return result.Error == nil && result.RowsAffected == 1
 }
 
 func (s *Server) logout(c *gin.Context) {

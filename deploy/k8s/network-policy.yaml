@@ -1,35 +1,34 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: postgres-only-from-sso
+  name: sso-egress
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: postgres
-  policyTypes: ["Ingress"]
-  ingress:
-    - from:
-        - podSelector:
+      app.kubernetes.io/name: sso
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
             matchLabels:
-              app.kubernetes.io/name: sso
+              kubernetes.io/metadata.name: kube-system
       ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Restrict these CIDRs to the PostgreSQL/Redis/SMTP/CAP services in the
+    # cluster overlay. The example keeps only required destination ports.
+    - ports:
+        - protocol: TCP
+          port: 443
         - protocol: TCP
           port: 5432
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: redis-only-from-sso
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: redis
-  policyTypes: ["Ingress"]
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: sso
-      ports:
         - protocol: TCP
           port: 6379
+        - protocol: TCP
+          port: 587
+        - protocol: TCP
+          port: 465
+        - protocol: TCP
+          port: 3000

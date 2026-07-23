@@ -24,16 +24,17 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	temp := t.TempDir()
 	cfg := config.Config{
-		Addr:                ":0",
-		Issuer:              "http://issuer.invalid",
-		DatabaseDriver:      "sqlite",
-		DatabaseDSN:         filepath.Join(temp, "sso.db"),
-		OAuthTokenDB:        ":memory:",
-		WebDir:              filepath.Join(temp, "web"),
-		SessionTTL:          24 * time.Hour,
-		RegistrationEnabled: true,
-		EmailDebug:          true,
-		MasterKey:           bytes.Repeat([]byte{0x41}, 32),
+		Addr:                 ":0",
+		Issuer:               "http://issuer.invalid",
+		DatabaseDriver:       "sqlite",
+		DatabaseDSN:          filepath.Join(temp, "sso.db"),
+		OAuthTokenDB:         ":memory:",
+		WebDir:               filepath.Join(temp, "web"),
+		SessionTTL:           24 * time.Hour,
+		RegistrationEnabled:  true,
+		EmailDebug:           true,
+		MasterKey:            bytes.Repeat([]byte{0x41}, 32),
+		BootstrapAdminEmails: []string{"alice@example.com"},
 	}
 	db, err := model.Open(cfg)
 	if err != nil {
@@ -69,7 +70,7 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 	}
 	var registeredUser model.User
 	if err := db.Where("username = ?", "alice").First(&registeredUser).Error; err != nil || registeredUser.Role != "admin" {
-		t.Fatalf("first registered user must be a verified admin: user=%#v err=%v", registeredUser, err)
+		t.Fatalf("configured bootstrap email must receive admin access: user=%#v err=%v", registeredUser, err)
 	}
 	if registeredUser.Locale != "ja" {
 		t.Fatalf("registration did not persist the detected locale: %#v", registeredUser)
@@ -162,6 +163,16 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 	code := callback.Query().Get("code")
 	if code == "" || callback.Query().Get("state") != "state-123" {
 		t.Fatalf("invalid callback %q", callback.String())
+	}
+	var approval model.OAuthApproval
+	if err := db.Order("id DESC").First(&approval).Error; err != nil || approval.UsedAt == nil {
+		t.Fatalf("authorization code was issued without consuming the approval: approval=%#v err=%v", approval, err)
+	}
+	replayed := doRequest(t, client, http.MethodGet, httpServer.URL+approvedURL, "", nil, "")
+	replayedLocation, _ := url.Parse(replayed.Header.Get("Location"))
+	replayed.Body.Close()
+	if replayedLocation.Query().Get("code") != "" {
+		t.Fatalf("a consumed approval issued another authorization code: %s", replayedLocation.String())
 	}
 
 	form := url.Values{"grant_type": {"authorization_code"}, "client_id": {clientID}, "client_secret": {clientSecret}, "code": {code}, "redirect_uri": {"http://client.example/callback"}, "code_verifier": {verifier}}
