@@ -97,7 +97,7 @@ func (s *Server) capProxy(c *gin.Context) {
 	}
 	target, err := url.Parse(s.setting(settingCAPServerURL, ""))
 	if err != nil || target.Scheme == "" || target.Host == "" {
-		s.serveError(c, http.StatusBadGateway, "Cap 服务地址无效")
+		s.serveError(c, http.StatusBadGateway, "PoW 服务地址无效")
 		return
 	}
 	proxy := httputil.NewSingleHostReverseProxy(target)

@@ -27,6 +27,7 @@ import (
 	"github.com/go-oauth2/oauth2/v4/generates"
 	"github.com/go-oauth2/oauth2/v4/manage"
 	"github.com/go-oauth2/oauth2/v4/server"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
@@ -41,6 +42,7 @@ type Server struct {
 	UpstreamProviders *upstream.Registry
 	OIDCKey           *rsa.PrivateKey
 	OIDCKeyID         string
+	Redis             *redis.Client
 }
 
 func New(cfg config.Config, db *gorm.DB) (*Server, error) {
@@ -61,7 +63,17 @@ func New(cfg config.Config, db *gorm.DB) (*Server, error) {
 
 	publicKeyDER := x509.MarshalPKCS1PublicKey(&key.PublicKey)
 	keyHash := sha256.Sum256(publicKeyDER)
-	app := &Server{Cfg: cfg, DB: db, Clients: &clientStore{db: db}, Tokens: tokenStore, UpstreamProviders: upstream.NewRegistry(), OIDCKey: key, OIDCKeyID: "sso-" + base64.RawURLEncoding.EncodeToString(keyHash[:8])}
+	redisClient, err := newRedisClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+	initialized := false
+	defer func() {
+		if !initialized && redisClient != nil {
+			_ = redisClient.Close()
+		}
+	}()
+	app := &Server{Cfg: cfg, DB: db, Clients: &clientStore{db: db}, Tokens: tokenStore, UpstreamProviders: upstream.NewRegistry(), OIDCKey: key, OIDCKeyID: "sso-" + base64.RawURLEncoding.EncodeToString(keyHash[:8]), Redis: redisClient}
 	manager := manage.NewDefaultManager()
 	manager.SetAuthorizeCodeExp(5 * time.Minute)
 	manager.SetAuthorizeCodeTokenCfg(&manage.Config{AccessTokenExp: 15 * time.Minute, RefreshTokenExp: 30 * 24 * time.Hour, IsGenerateRefresh: true})
@@ -110,7 +122,15 @@ func New(cfg config.Config, db *gorm.DB) (*Server, error) {
 	if err := validateCaptchaSettings(app.setting(settingCaptchaMode, "none"), nil, app.setting); err != nil {
 		return nil, fmt.Errorf("invalid captcha settings: %w", err)
 	}
+	initialized = true
 	return app, nil
+}
+
+func (s *Server) Close() error {
+	if s.Redis == nil {
+		return nil
+	}
+	return s.Redis.Close()
 }
 
 func (s *Server) Router() *gin.Engine {
@@ -140,56 +160,58 @@ func (s *Server) Router() *gin.Engine {
 	api.POST("/auth/login/mfa", s.loginMFA)
 	api.POST("/auth/email/resend", s.resendVerificationCode)
 	api.POST("/auth/telegram", s.telegramLogin)
-	api.POST("/auth/logout", s.requireAuth, s.requireSession, s.requireCSRF, s.logout)
-	api.POST("/auth/logout-all", s.requireAuth, s.requireSession, s.requireCSRF, s.logoutAll)
+	api.POST("/auth/logout", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.logout)
+	api.POST("/auth/logout-all", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.logoutAll)
 	api.GET("/oauth/consent", s.requireAuth, s.oauthConsentInfo)
-	api.POST("/oauth/consent", s.requireAuth, s.requireCSRF, s.oauthConsent)
+	api.POST("/oauth/consent", s.requireAuth, s.requireCSRF, s.sensitiveRateLimit, s.oauthConsent)
 	api.GET("/dashboard", s.requireAuth, s.dashboard)
 	api.GET("/apps", s.requireAuth, s.listApps)
-	api.POST("/apps", s.requireAuth, s.requireCSRF, s.createApp)
+	api.POST("/apps", s.requireAuth, s.requireCSRF, s.sensitiveRateLimit, s.createApp)
 	api.GET("/apps/:id", s.requireAuth, s.getApp)
-	api.PATCH("/apps/:id", s.requireAuth, s.requireCSRF, s.updateApp)
-	api.DELETE("/apps/:id", s.requireAuth, s.requireCSRF, s.deleteApp)
-	api.POST("/apps/:id/rotate-secret", s.requireAuth, s.requireCSRF, s.rotateAppSecret)
+	api.PATCH("/apps/:id", s.requireAuth, s.requireCSRF, s.sensitiveRateLimit, s.updateApp)
+	api.DELETE("/apps/:id", s.requireAuth, s.requireCSRF, s.sensitiveRateLimit, s.deleteApp)
+	api.POST("/apps/:id/rotate-secret", s.requireAuth, s.requireCSRF, s.sensitiveRateLimit, s.rotateAppSecret)
 	api.GET("/authorizations", s.requireAuth, s.listAuthorizations)
 	api.GET("/grants", s.requireAuth, s.listGrants)
-	api.DELETE("/grants/:id", s.requireAuth, s.requireCSRF, s.revokeGrant)
+	api.DELETE("/grants/:id", s.requireAuth, s.requireCSRF, s.sensitiveRateLimit, s.revokeGrant)
 	api.GET("/profile", s.requireAuth, s.profile)
-	api.PATCH("/profile", s.requireAuth, s.requireCSRF, s.updateProfile)
-	api.POST("/profile/emails/prepare", s.requireAuth, s.requireSession, s.requireCSRF, s.prepareProfileEmail)
-	api.POST("/profile/emails/complete", s.requireAuth, s.requireSession, s.requireCSRF, s.completeProfileEmail)
-	api.POST("/profile/avatar", s.requireAuth, s.requireSession, s.requireCSRF, s.uploadAvatar)
-	api.POST("/profile/password", s.requireAuth, s.requireSession, s.requireCSRF, s.changePassword)
-	api.POST("/profile/mfa/setup", s.requireAuth, s.requireSession, s.requireCSRF, s.setupMFA)
-	api.POST("/profile/mfa/enable", s.requireAuth, s.requireSession, s.requireCSRF, s.enableMFA)
-	api.POST("/profile/mfa/disable", s.requireAuth, s.requireSession, s.requireCSRF, s.disableMFA)
+	api.PATCH("/profile", s.requireAuth, s.requireCSRF, s.sensitiveRateLimit, s.updateProfile)
+	api.POST("/profile/emails/prepare", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.prepareProfileEmail)
+	api.POST("/profile/emails/complete", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.completeProfileEmail)
+	api.DELETE("/profile/bindings/email/:id", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.deleteOwnEmailBinding)
+	api.DELETE("/profile/bindings/upstream/:id", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.deleteOwnUpstreamBinding)
+	api.POST("/profile/avatar", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.uploadAvatar)
+	api.POST("/profile/password", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.changePassword)
+	api.POST("/profile/mfa/setup", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.setupMFA)
+	api.POST("/profile/mfa/enable", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.enableMFA)
+	api.POST("/profile/mfa/disable", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.disableMFA)
 	api.GET("/profile/sessions", s.requireAuth, s.requireSession, s.listSessions)
-	api.DELETE("/profile/sessions/:id", s.requireAuth, s.requireSession, s.requireCSRF, s.revokeSession)
+	api.DELETE("/profile/sessions/:id", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.revokeSession)
 	api.GET("/profile/tokens", s.requireAuth, s.listPATs)
-	api.POST("/profile/tokens", s.requireAuth, s.requireSession, s.requireCSRF, s.createPAT)
-	api.DELETE("/profile/tokens/:id", s.requireAuth, s.requireSession, s.requireCSRF, s.revokePAT)
+	api.POST("/profile/tokens", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.createPAT)
+	api.DELETE("/profile/tokens/:id", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.revokePAT)
 	api.GET("/profile/audit", s.requireAuth, s.listAudit)
 	api.GET("/profile/export", s.requireAuth, s.exportData)
-	api.DELETE("/profile", s.requireAuth, s.requireSession, s.requireCSRF, s.deleteAccount)
-	api.POST("/profile/merge/start", s.requireAuth, s.requireSession, s.requireCSRF, s.startAccountMerge)
+	api.DELETE("/profile", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.deleteAccount)
+	api.POST("/profile/merge/start", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.startAccountMerge)
 	api.GET("/providers", s.listProviders)
 	api.Any("/cap/*proxyPath", s.capProxy)
 
 	admin := api.Group("/admin", s.requireAuth, s.requireSession, s.requireAdmin)
 	admin.GET("/users", s.adminListUsers)
 	admin.GET("/users/:id", s.adminGetUser)
-	admin.PATCH("/users/:id", s.requireCSRF, s.adminUpdateUser)
-	admin.DELETE("/users/:id/mfa", s.requireCSRF, s.adminResetMFA)
+	admin.PATCH("/users/:id", s.requireCSRF, s.sensitiveRateLimit, s.adminUpdateUser)
+	admin.DELETE("/users/:id/mfa", s.requireCSRF, s.sensitiveRateLimit, s.adminResetMFA)
 	admin.GET("/channels", s.adminListChannels)
 	admin.GET("/channels/:kind/bindings", s.adminListChannelBindings)
-	admin.DELETE("/bindings/email/:id", s.requireCSRF, s.adminDisableEmailBinding)
-	admin.DELETE("/bindings/upstream/:id", s.requireCSRF, s.adminDisableUpstreamBinding)
+	admin.DELETE("/bindings/email/:id", s.requireCSRF, s.sensitiveRateLimit, s.adminDeleteEmailBinding)
+	admin.DELETE("/bindings/upstream/:id", s.requireCSRF, s.sensitiveRateLimit, s.adminDeleteUpstreamBinding)
 	admin.GET("/settings", s.adminGetSettings)
-	admin.PATCH("/settings", s.requireCSRF, s.adminUpdateSettings)
-	admin.POST("/settings/email/test", s.requireCSRF, s.adminTestEmail)
+	admin.PATCH("/settings", s.requireCSRF, s.sensitiveRateLimit, s.adminUpdateSettings)
+	admin.POST("/settings/email/test", s.requireCSRF, s.sensitiveRateLimit, s.adminTestEmail)
 	admin.GET("/providers", s.adminListProviders)
-	admin.PATCH("/providers/:id", s.requireCSRF, s.adminUpdateProvider)
-	admin.POST("/providers/:id/test", s.requireCSRF, s.adminTestProvider)
+	admin.PATCH("/providers/:id", s.requireCSRF, s.sensitiveRateLimit, s.adminUpdateProvider)
+	admin.POST("/providers/:id/test", s.requireCSRF, s.sensitiveRateLimit, s.adminTestProvider)
 
 	router.NoRoute(s.serveWeb)
 	return router
@@ -368,7 +390,7 @@ func (s *Server) revokeCurrentSession(c *gin.Context) {
 func (s *Server) user(c *gin.Context) *model.User       { return c.MustGet("user").(*model.User) }
 func (s *Server) session(c *gin.Context) *model.Session { return c.MustGet("session").(*model.Session) }
 func publicUser(user *model.User) gin.H {
-	return gin.H{"id": user.ID, "username": user.Username, "email": user.Email, "display_name": user.DisplayName, "avatar_url": user.AvatarURL, "locale": user.Locale, "email_verified": user.EmailVerifiedAt != nil, "mfa_enabled": user.MFAEnabled, "password_configured": user.PasswordConfigured, "role": user.Role, "status": user.Status, "security_email_enabled": user.SecurityEmailEnabled, "created_at": user.CreatedAt, "last_login_at": user.LastLoginAt}
+	return gin.H{"id": user.ID, "username": user.Username, "display_name": user.DisplayName, "avatar_url": user.AvatarURL, "locale": user.Locale, "mfa_enabled": user.MFAEnabled, "password_configured": user.PasswordConfigured, "role": user.Role, "status": user.Status, "security_email_enabled": user.SecurityEmailEnabled, "created_at": user.CreatedAt, "last_login_at": user.LastLoginAt}
 }
 func clientIP(c *gin.Context) string {
 	return c.ClientIP()

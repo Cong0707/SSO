@@ -15,7 +15,7 @@ func TestUserBindingViewsUnifiesEmailAndUpstreamIdentities(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now()
-	email := model.UserEmail{UserID: user.ID, OriginalUserID: user.ID, Email: "first@example.com", NormalizedEmail: "first@example.com", Primary: true, VerifiedAt: &now}
+	email := model.UserEmail{UserID: user.ID, Email: "first@example.com", NormalizedEmail: "first@example.com", VerifiedAt: &now}
 	if err := db.Create(&email).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -23,16 +23,16 @@ func TestUserBindingViewsUnifiesEmailAndUpstreamIdentities(t *testing.T) {
 	if err := db.Create(&provider).Error; err != nil {
 		t.Fatal(err)
 	}
-	identity := model.UpstreamIdentity{UserID: user.ID, OriginalUserID: user.ID, ProviderID: provider.ID, ExternalID: "12301923", ExternalName: "octocat", ExternalEmail: "octocat@example.com", VerifiedAt: &now, LastLoginAt: now}
+	identity := model.UpstreamIdentity{UserID: user.ID, ProviderID: provider.ID, ExternalID: "12301923", ExternalName: "octocat", ExternalEmail: "octocat@example.com", VerifiedAt: &now, LastLoginAt: now}
 	if err := db.Create(&identity).Error; err != nil {
 		t.Fatal(err)
 	}
 
-	bindings := application.userBindingViews(user.ID, true)
+	bindings := application.userBindingViews(user.ID)
 	if len(bindings) != 2 {
 		t.Fatalf("expected two unified bindings, got %#v", bindings)
 	}
-	if bindings[0].BindingType != "email" || bindings[0].Identifier != "first@example.com" || !bindings[0].Primary || !bindings[0].Verified {
+	if bindings[0].BindingType != "email" || bindings[0].Identifier != "first@example.com" || !bindings[0].Verified {
 		t.Fatalf("unexpected email binding: %#v", bindings[0])
 	}
 	if bindings[1].BindingType != "upstream" || bindings[1].Kind != "github" || bindings[1].DisplayName != "GitHub" || bindings[1].Identifier != "12301923" || bindings[1].AccountName != "octocat" {

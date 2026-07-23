@@ -22,7 +22,7 @@ var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{2,31}$`)
 
 func (s *Server) identify(c *gin.Context) {
 	var input struct {
-		Identifier   string `json:"identifier"`
+		Email        string `json:"email"`
 		CaptchaToken string `json:"captcha_token"`
 		MergeToken   string `json:"merge_token"`
 	}
@@ -30,9 +30,12 @@ func (s *Server) identify(c *gin.Context) {
 		s.serveError(c, http.StatusBadRequest, "请求格式错误")
 		return
 	}
-	identifier := strings.ToLower(strings.TrimSpace(input.Identifier))
-	if !usernamePattern.MatchString(input.Identifier) && !validEmail(identifier) {
-		s.serveError(c, http.StatusBadRequest, "请输入有效的用户名或邮箱")
+	email := strings.ToLower(strings.TrimSpace(input.Email))
+	if !validEmail(email) {
+		s.serveError(c, http.StatusBadRequest, "请输入有效的邮箱")
+		return
+	}
+	if !s.enforceRateLimitPair(c, "identify", email, s.Cfg.RateLimitIdentify, time.Minute) {
 		return
 	}
 	if err := s.verifyCaptcha(input.CaptchaToken, clientIP(c)); err != nil {
@@ -50,15 +53,11 @@ func (s *Server) identify(c *gin.Context) {
 		sourceUserID = mergeFlow.SourceUserID
 		sourceSessionID = mergeFlow.SessionID
 	}
-	user, err := s.findUserByIdentifier(identifier)
+	user, err := s.findUserByEmail(email)
 	mode := "login"
 	var userID *uint64
 	username := ""
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		if validEmail(identifier) {
-			s.serveError(c, http.StatusNotFound, "该邮箱尚未绑定账号，请使用用户名注册")
-			return
-		}
 		if sourceUserID != nil {
 			s.serveError(c, http.StatusNotFound, "要合并的账号不存在")
 			return
@@ -68,7 +67,6 @@ func (s *Server) identify(c *gin.Context) {
 			return
 		}
 		mode = "register"
-		username = strings.TrimSpace(input.Identifier)
 	} else if err != nil {
 		s.serveError(c, http.StatusInternalServerError, "读取账号失败")
 		return
@@ -84,7 +82,7 @@ func (s *Server) identify(c *gin.Context) {
 		userID = &user.ID
 	}
 	raw, flow, err := s.createAuthFlow(model.AuthFlow{
-		Purpose: "identify_" + mode, Identifier: identifier, Username: username,
+		Purpose: "identify_" + mode, Identifier: email, Email: email, Username: username,
 		UserID: userID, SourceUserID: sourceUserID, SessionID: sourceSessionID, ExpiresAt: time.Now().Add(10 * time.Minute),
 	})
 	if err != nil {
@@ -93,16 +91,16 @@ func (s *Server) identify(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
 		"flow_token": raw, "mode": mode, "mfa_required": userID != nil && user.MFAEnabled,
-		"username": flow.Username,
+		"email": flow.Email,
 	}})
 }
 
 func (s *Server) registerPrepare(c *gin.Context) {
 	var input struct {
 		FlowToken       string `json:"flow_token"`
+		Username        string `json:"username"`
 		Password        string `json:"password"`
 		ConfirmPassword string `json:"confirm_password"`
-		Email           string `json:"email"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		s.serveError(c, http.StatusBadRequest, "请求格式错误")
@@ -113,9 +111,12 @@ func (s *Server) registerPrepare(c *gin.Context) {
 		s.serveError(c, http.StatusBadRequest, "注册流程已过期，请返回重试")
 		return
 	}
-	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
-	if !validEmail(input.Email) {
-		s.serveError(c, http.StatusBadRequest, "邮箱格式不正确")
+	input.Username = strings.TrimSpace(input.Username)
+	if !usernamePattern.MatchString(input.Username) {
+		s.serveError(c, http.StatusBadRequest, "用户名需为 3-32 位字母、数字、下划线或连字符")
+		return
+	}
+	if !s.enforceRateLimitPair(c, "registration_email", flow.Email, s.Cfg.RateLimitEmail, time.Hour) {
 		return
 	}
 	if input.Password != input.ConfirmPassword {
@@ -127,8 +128,12 @@ func (s *Server) registerPrepare(c *gin.Context) {
 		return
 	}
 	var count int64
-	if err := s.DB.Model(&model.UserEmail{}).Where("normalized_email = ? AND disabled_at IS NULL", input.Email).Count(&count).Error; err != nil || count > 0 {
+	if err := s.DB.Model(&model.UserEmail{}).Where("normalized_email = ?", flow.Email).Count(&count).Error; err != nil || count > 0 {
 		s.serveError(c, http.StatusConflict, "邮箱已被使用")
+		return
+	}
+	if err := s.DB.Model(&model.User{}).Where("LOWER(username) = ?", strings.ToLower(input.Username)).Count(&count).Error; err != nil || count > 0 {
+		s.serveError(c, http.StatusConflict, "用户名已被使用")
 		return
 	}
 	passwordHash, err := security.HashPassword(input.Password)
@@ -143,7 +148,7 @@ func (s *Server) registerPrepare(c *gin.Context) {
 	}
 	now := time.Now()
 	updates := map[string]any{
-		"purpose": "register_verify", "email": input.Email, "password_hash": passwordHash,
+		"purpose": "register_verify", "username": input.Username, "password_hash": passwordHash,
 		"verification_code_hash": security.HMACToken(s.Cfg.MasterKey, code), "last_sent_at": &now,
 		"attempts": 0, "expires_at": now.Add(10 * time.Minute),
 	}
@@ -151,9 +156,9 @@ func (s *Server) registerPrepare(c *gin.Context) {
 		s.serveError(c, http.StatusInternalServerError, "保存注册流程失败")
 		return
 	}
-	if err := s.deliverVerificationCode(input.Email, code); err != nil {
+	if err := s.deliverVerificationCode(flow.Email, code); err != nil {
 		_ = s.DB.Model(&flow).Updates(map[string]any{
-			"purpose": "identify_register", "email": "", "password_hash": "",
+			"purpose": "identify_register", "username": "", "password_hash": "",
 			"verification_code_hash": "", "last_sent_at": nil, "attempts": 0,
 			"expires_at": time.Now().Add(10 * time.Minute),
 		}).Error
@@ -198,14 +203,14 @@ func (s *Server) registerComplete(c *gin.Context) {
 			role = "admin"
 		}
 		user = model.User{
-			Username: flow.Username, Email: flow.Email, PasswordHash: flow.PasswordHash,
+			Username: flow.Username, PasswordHash: flow.PasswordHash,
 			PasswordConfigured: true, DisplayName: flow.Username, Locale: "zh-CN",
-			EmailVerifiedAt: &now, SecurityEmailEnabled: true, Role: role, Status: "active",
+			SecurityEmailEnabled: true, Role: role, Status: "active",
 		}
 		if err := tx.Create(&user).Error; err != nil {
 			return err
 		}
-		email := model.UserEmail{UserID: user.ID, OriginalUserID: user.ID, Email: flow.Email, NormalizedEmail: flow.Email, Primary: true, VerifiedAt: &now}
+		email := model.UserEmail{UserID: user.ID, Email: flow.Email, NormalizedEmail: flow.Email, VerifiedAt: &now}
 		if err := tx.Create(&email).Error; err != nil {
 			return err
 		}
@@ -235,6 +240,9 @@ func (s *Server) loginPassword(c *gin.Context) {
 	flow, err := s.loadAuthFlow(input.FlowToken, "identify_login")
 	if err != nil || flow.UserID == nil || (flow.SourceUserID != nil && !s.mergeSessionMatches(c, &flow)) {
 		s.serveError(c, http.StatusBadRequest, "登录流程已过期，请返回重试")
+		return
+	}
+	if !s.enforceRateLimitPair(c, "password_login", fmt.Sprintf("user:%d", *flow.UserID), s.Cfg.RateLimitLogin, 5*time.Minute) {
 		return
 	}
 	var user model.User
@@ -276,6 +284,9 @@ func (s *Server) loginMFA(c *gin.Context) {
 	flow, err := s.loadAuthFlow(input.FlowToken, "login_mfa")
 	if err != nil || flow.UserID == nil || (flow.SourceUserID != nil && !s.mergeSessionMatches(c, &flow)) {
 		s.serveError(c, http.StatusBadRequest, "二次验证流程已过期")
+		return
+	}
+	if !s.enforceRateLimitPair(c, "mfa_login", fmt.Sprintf("user:%d", *flow.UserID), s.Cfg.RateLimitLogin, 5*time.Minute) {
 		return
 	}
 	var user model.User
@@ -339,6 +350,9 @@ func (s *Server) resendVerificationCode(c *gin.Context) {
 	flow, err := s.loadAuthFlow(input.FlowToken, "register_verify")
 	if err != nil {
 		s.serveError(c, http.StatusBadRequest, "邮箱验证流程已过期")
+		return
+	}
+	if !s.enforceRateLimitPair(c, "verification_resend", flow.Email, s.Cfg.RateLimitEmail, time.Hour) {
 		return
 	}
 	if flow.LastSentAt != nil && time.Since(*flow.LastSentAt) < time.Minute {

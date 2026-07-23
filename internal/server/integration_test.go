@@ -58,9 +58,9 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 	}
 	client := &http.Client{Jar: jar, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 
-	identified := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/auth/identify", "", map[string]any{"identifier": "alice"})
+	identified := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/auth/identify", "", map[string]any{"email": "alice@example.com"})
 	flowToken := nestedString(t, identified, "data", "flow_token")
-	prepared := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/auth/register/prepare", "", map[string]any{"flow_token": flowToken, "email": "alice@example.com", "password": "Password123", "confirm_password": "Password123"})
+	prepared := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/auth/register/prepare", "", map[string]any{"flow_token": flowToken, "username": "alice", "password": "Password123", "confirm_password": "Password123"})
 	verificationCode := nestedString(t, prepared, "data", "debug_code")
 	register := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/auth/register/complete", "", map[string]any{"flow_token": flowToken, "code": verificationCode})
 	csrf := nestedString(t, register, "data", "csrf_token")
@@ -68,11 +68,11 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 		t.Fatal("registration returned an unexpected user")
 	}
 	var registeredUser model.User
-	if err := db.Where("username = ?", "alice").First(&registeredUser).Error; err != nil || registeredUser.EmailVerifiedAt == nil || registeredUser.Role != "admin" {
+	if err := db.Where("username = ?", "alice").First(&registeredUser).Error; err != nil || registeredUser.Role != "admin" {
 		t.Fatalf("first registered user must be a verified admin: user=%#v err=%v", registeredUser, err)
 	}
 	var registeredEmail model.UserEmail
-	if err := db.Where("user_id = ? AND normalized_email = ?", registeredUser.ID, "alice@example.com").First(&registeredEmail).Error; err != nil || registeredEmail.VerifiedAt == nil || !registeredEmail.Primary {
+	if err := db.Where("user_id = ? AND normalized_email = ?", registeredUser.ID, "alice@example.com").First(&registeredEmail).Error; err != nil || registeredEmail.VerifiedAt == nil {
 		t.Fatalf("verified email binding was not created: email=%#v err=%v", registeredEmail, err)
 	}
 	settings := doJSON(t, client, http.MethodGet, httpServer.URL+"/api/admin/settings", "", nil)

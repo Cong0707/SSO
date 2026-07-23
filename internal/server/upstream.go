@@ -248,10 +248,6 @@ func (s *Server) upstreamCallback(c *gin.Context) {
 		var existing model.UpstreamIdentity
 		identityErr := s.DB.Where("provider_id = ? AND external_id = ?", providerRecord.ID, identityData.Subject).First(&existing).Error
 		if identityErr == nil {
-			if existing.DisabledAt != nil {
-				c.Redirect(http.StatusFound, "/login?oauth_error=identity_disabled")
-				return
-			}
 			if s.DB.First(&user, existing.UserID).Error != nil {
 				c.Redirect(http.StatusFound, "/login?oauth_error=user_missing")
 				return
@@ -273,10 +269,6 @@ func (s *Server) upstreamCallback(c *gin.Context) {
 	}
 	var conflict model.UpstreamIdentity
 	if err := s.DB.Where("provider_id = ? AND external_id = ?", providerRecord.ID, identityData.Subject).First(&conflict).Error; err == nil {
-		if conflict.DisabledAt != nil {
-			c.Redirect(http.StatusFound, "/profile?oauth_error=identity_disabled")
-			return
-		}
 		if conflict.UserID != user.ID {
 			c.Redirect(http.StatusFound, "/profile?oauth_error=already_bound")
 			return
@@ -287,7 +279,7 @@ func (s *Server) upstreamCallback(c *gin.Context) {
 		externalName = strings.TrimSpace(identityData.Username)
 	}
 	identity := model.UpstreamIdentity{
-		UserID: user.ID, OriginalUserID: user.ID, ProviderID: providerRecord.ID, ExternalID: identityData.Subject,
+		UserID: user.ID, ProviderID: providerRecord.ID, ExternalID: identityData.Subject,
 		ExternalName: externalName, ExternalEmail: strings.ToLower(strings.TrimSpace(identityData.Email)), LastLoginAt: now,
 	}
 	if identityData.EmailVerified {
@@ -375,7 +367,7 @@ func (s *Server) provisionUpstreamUser(provider model.UpstreamProvider, identity
 	}
 	email := strings.ToLower(strings.TrimSpace(identity.Email))
 	if !identity.EmailVerified || !validEmail(email) {
-		email = fmt.Sprintf("%s-%s@users.invalid", provider.Kind, security.HashToken(identity.Subject)[:16])
+		email = ""
 	}
 	randomPassword, err := security.RandomToken(32)
 	if err != nil {
@@ -393,13 +385,9 @@ func (s *Server) provisionUpstreamUser(provider model.UpstreamProvider, identity
 		displayName = username
 	}
 	user := model.User{
-		Username: username, Email: email, PasswordHash: hash, PasswordConfigured: false,
+		Username: username, PasswordHash: hash, PasswordConfigured: false,
 		DisplayName: displayName, AvatarURL: strings.TrimSpace(identity.AvatarURL), Locale: "zh-CN",
 		SecurityEmailEnabled: true, Role: "user", Status: "active",
-	}
-	if identity.EmailVerified && validEmail(email) {
-		now := time.Now()
-		user.EmailVerifiedAt = &now
 	}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		var count int64
@@ -412,14 +400,14 @@ func (s *Server) provisionUpstreamUser(provider model.UpstreamProvider, identity
 		if err := tx.Create(&user).Error; err != nil {
 			return err
 		}
-		if identity.EmailVerified && validEmail(email) {
+		if email != "" {
 			var emailCount int64
-			if err := tx.Model(&model.UserEmail{}).Where("normalized_email = ? AND disabled_at IS NULL", email).Count(&emailCount).Error; err != nil {
+			if err := tx.Model(&model.UserEmail{}).Where("normalized_email = ?", email).Count(&emailCount).Error; err != nil {
 				return err
 			}
 			if emailCount == 0 {
 				verifiedAt := time.Now()
-				if err := tx.Create(&model.UserEmail{UserID: user.ID, OriginalUserID: user.ID, Email: email, NormalizedEmail: email, Primary: true, VerifiedAt: &verifiedAt}).Error; err != nil {
+				if err := tx.Create(&model.UserEmail{UserID: user.ID, Email: email, NormalizedEmail: email, VerifiedAt: &verifiedAt}).Error; err != nil {
 					return err
 				}
 			}
@@ -444,26 +432,23 @@ func (s *Server) syncUpstreamProfile(user *model.User, identity upstream.Identit
 	if strings.TrimSpace(user.AvatarURL) == "" && strings.TrimSpace(identity.AvatarURL) != "" {
 		updates["avatar_url"] = strings.TrimSpace(identity.AvatarURL)
 	}
-	if strings.HasSuffix(strings.ToLower(user.Email), "@users.invalid") && identity.EmailVerified && validEmail(identity.Email) {
+	if identity.EmailVerified && validEmail(identity.Email) {
 		verifiedEmail := strings.ToLower(strings.TrimSpace(identity.Email))
 		now := time.Now()
-		updates["email"] = verifiedEmail
-		updates["email_verified_at"] = &now
 		var count int64
-		if err := s.DB.Model(&model.UserEmail{}).Where("normalized_email = ? AND disabled_at IS NULL", verifiedEmail).Count(&count).Error; err != nil {
+		if err := s.DB.Model(&model.UserEmail{}).Where("normalized_email = ?", verifiedEmail).Count(&count).Error; err != nil {
 			return err
 		}
 		if count == 0 {
-			if err := s.DB.Create(&model.UserEmail{UserID: user.ID, OriginalUserID: user.ID, Email: verifiedEmail, NormalizedEmail: verifiedEmail, Primary: true, VerifiedAt: &now}).Error; err != nil {
+			if err := s.DB.Create(&model.UserEmail{UserID: user.ID, Email: verifiedEmail, NormalizedEmail: verifiedEmail, VerifiedAt: &now}).Error; err != nil {
 				return err
 			}
 		}
 	}
-	if len(updates) == 0 {
-		return nil
-	}
-	if err := s.DB.Model(user).Updates(updates).Error; err != nil {
-		return err
+	if len(updates) > 0 {
+		if err := s.DB.Model(user).Updates(updates).Error; err != nil {
+			return err
+		}
 	}
 	return s.DB.First(user, user.ID).Error
 }

@@ -1,12 +1,12 @@
-# 统一身份中心
+# xem SSO
 
-统一身份中心是面向自有服务的用户管理与 OAuth 2.0 / OpenID Connect 服务。界面参考 `Cong0707/new-api` 默认前端的中性主题、紧凑侧栏和账号安全设置，但业务模型独立于 AI 网关。
+xem SSO 是面向自有服务的用户管理与 OAuth 2.0 / OpenID Connect 服务。
 
 ## 已实现能力
 
-- 三页式注册/登录：用户名或邮箱识别、人机验证、密码、注册邮箱验证码，以及按需出现的 MFA 页面。
+- 三页式注册/登录：首屏使用邮箱识别和人机验证；新用户在第二页设置用户名与密码，已有用户输入密码；第三页完成注册邮箱验证码或按需出现的 MFA 验证。
 - 注册邮箱必须验证成功后才创建账号；本地 SQLite 可显式启用 `SSO_EMAIL_DEBUG` 展示调试验证码，生产环境禁止启用。
-- 用户资料、多邮箱与多第三方身份绑定、密码修改、TOTP MFA、一次性备用码、头像上传、设备管理、PAT、JSON 数据导出和安全审计。
+- 用户资料、多邮箱与多第三方身份平等绑定、密码修改、TOTP MFA、一次性备用码、头像上传、设备管理、PAT、JSON 数据导出和安全审计。普通用户可删除任意绑定，但必须至少保留一条；管理员可删除最后一条绑定。
 - 账号注销采用永久保留模型：账号状态改为 `deactivated`，会话和凭证撤销，数据库记录不物理删除。
 - 账号合并需要先确认当前密码，再登录另一个账号；邮箱和第三方身份合并到 ID 较小的账号，原账号标记为 `merged` 并永久保留供审计。
 - OAuth 应用创建、编辑、删除、客户端密钥轮换和应用图标。
@@ -25,6 +25,8 @@
 ```powershell
 $env:SSO_DATABASE_DRIVER = "postgres"
 $env:SSO_DATABASE_DSN = "host=127.0.0.1 user=sso password=change-me dbname=sso port=5432 sslmode=disable TimeZone=UTC"
+$env:SSO_REDIS_ADDR = "127.0.0.1:6379"
+$env:SSO_REDIS_PASSWORD = "replace-me"
 $env:SSO_ALLOW_KEY_GENERATION = "true" # 仅本地演示
 $env:SSO_SMTP_HOST = "smtp.example.com"
 $env:SSO_SMTP_PORT = "587"
@@ -71,7 +73,7 @@ go build -o sso.exe ./cmd/sso
 docker compose up -d --build
 ```
 
-Compose 会启动 PostgreSQL 和 SSO。Compose 为本地开发默认允许自动生成密钥；生产环境应改为挂载固定的 `SSO_MASTER_KEY_FILE` 和 `SSO_OIDC_SIGNING_KEY_FILE`，并关闭 `SSO_ALLOW_KEY_GENERATION`。
+Compose 会启动 PostgreSQL、Redis 和 SSO。Redis 保存跨实例共享的短期限流计数；SSO 启用限流后如果 Redis 不可用，会拒绝认证和敏感操作。Compose 为本地开发默认允许自动生成密钥；生产环境应改为挂载固定的 `SSO_MASTER_KEY_FILE` 和 `SSO_OIDC_SIGNING_KEY_FILE`，并关闭 `SSO_ALLOW_KEY_GENERATION`。
 
 ## Kubernetes 部署
 
@@ -81,13 +83,14 @@ Compose 会启动 PostgreSQL 和 SSO。Compose 为本地开发默认允许自动
 kubectl create namespace sso
 kubectl -n sso create secret generic sso-secrets `
   --from-literal=POSTGRES_PASSWORD='替换为随机长密码' `
+  --from-literal=SSO_REDIS_PASSWORD='替换为另一随机长密码' `
   --from-literal=SSO_DATABASE_DSN='host=postgres user=sso password=替换为随机长密码 dbname=sso port=5432 sslmode=disable TimeZone=UTC' `
   --from-file=master.key=data/master.key `
   --from-file=oidc-signing.pem=data/oidc-signing.pem
 kubectl apply -k deploy/k8s
 ```
 
-`master.key` 必须是 32 字节密钥的无填充 Base64 文本，`oidc-signing.pem` 必须是 RSA 私钥。生产域名、TLS Secret 和镜像地址请修改 `sso-configmap.yaml`、`sso-ingress.example.yaml` 与 `sso-deployment.yaml`。当前头像仍保存于应用 PVC，多副本部署应换成对象存储或 RWX 卷。
+`master.key` 必须是 32 字节密钥的无填充 Base64 文本，`oidc-signing.pem` 必须是 RSA 私钥。生产域名、TLS Secret 和镜像地址请修改 `sso-configmap.yaml`、`sso-ingress.example.yaml` 与 `sso-deployment.yaml`。Kubernetes 示例部署 Redis 供所有 SSO Pod 共享限流状态；正式环境可替换为高可用 Redis 服务。当前头像仍保存于应用 PVC，多副本部署应换成 Ceph、对象存储或 RWX 卷。
 
 ## OAuth/OIDC 端点
 
@@ -106,7 +109,7 @@ GET  /oauth/jwks.json
 
 `SSO_MASTER_KEY_FILE` 用于加密 MFA、上游客户端密钥和 OAuth 令牌载荷；`SSO_OIDC_SIGNING_KEY_FILE` 用于签发 OIDC ID Token。两者必须和数据库一起备份，权限应限制为服务用户。OAuth 令牌只在数据库中保存 SHA-256 索引和 AES-GCM 加密载荷，不再使用单机 BuntDB 文件。
 
-注册和邮箱换绑验证码使用 master key 计算 HMAC-SHA256，10 分钟过期，限制尝试次数并带 60 秒重发间隔。生产环境必须通过环境变量引导 SMTP，或在首个管理员创建前由部署流程写入系统设置；`SSO_EMAIL_DEBUG` 必须保持为 `false`。
+注册和邮箱绑定验证码使用 master key 计算 HMAC-SHA256，10 分钟过期，限制尝试次数并带 60 秒重发间隔。生产环境必须通过环境变量引导 SMTP，或在首个管理员创建前由部署流程写入系统设置；`SSO_EMAIL_DEBUG` 必须保持为 `false`。
 
 ## 新增登录方式
 

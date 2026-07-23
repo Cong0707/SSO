@@ -31,8 +31,12 @@ func TestProvisionUpstreamUserImportsProfileAndAllowsLaterUserEdits(t *testing.T
 	if err != nil {
 		t.Fatalf("provision upstream user: %v", err)
 	}
-	if user.Username != "octocat" || user.DisplayName != "The Octocat" || user.Email != "octocat@example.com" || user.AvatarURL == "" {
+	if user.Username != "octocat" || user.DisplayName != "The Octocat" || user.AvatarURL == "" {
 		t.Fatalf("profile was not imported: %#v", user)
+	}
+	var importedEmail model.UserEmail
+	if err := db.Where("user_id = ? AND normalized_email = ?", user.ID, "octocat@example.com").First(&importedEmail).Error; err != nil || importedEmail.VerifiedAt == nil {
+		t.Fatalf("verified upstream email was not imported as an equal binding: %#v err=%v", importedEmail, err)
 	}
 	if user.Role != "admin" {
 		t.Fatalf("the first verified upstream account must bootstrap admin access: %#v", user)
@@ -42,7 +46,6 @@ func TestProvisionUpstreamUserImportsProfileAndAllowsLaterUserEdits(t *testing.T
 	}
 
 	user.DisplayName = "Custom Name"
-	user.Email = "custom@example.com"
 	user.AvatarURL = "https://cdn.example/custom.png"
 	if err := db.Save(&user).Error; err != nil {
 		t.Fatalf("save user edits: %v", err)
@@ -54,12 +57,12 @@ func TestProvisionUpstreamUserImportsProfileAndAllowsLaterUserEdits(t *testing.T
 	if err := application.syncUpstreamProfile(&user, changed); err != nil {
 		t.Fatalf("sync upstream profile: %v", err)
 	}
-	if user.DisplayName != "Custom Name" || user.Email != "custom@example.com" || user.AvatarURL != "https://cdn.example/custom.png" {
+	if user.DisplayName != "Custom Name" || user.AvatarURL != "https://cdn.example/custom.png" {
 		t.Fatalf("user edits were overwritten: %#v", user)
 	}
 }
 
-func TestSyncUpstreamProfileReplacesPlaceholderWithVerifiedEmail(t *testing.T) {
+func TestSyncUpstreamProfileAddsVerifiedEmailBinding(t *testing.T) {
 	db := openTestDatabase(t)
 	application := &Server{DB: db}
 	provider := model.UpstreamProvider{Kind: "discord"}
@@ -67,14 +70,12 @@ func TestSyncUpstreamProfileReplacesPlaceholderWithVerifiedEmail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("provision placeholder user: %v", err)
 	}
-	if !strings.HasSuffix(user.Email, "@users.invalid") {
-		t.Fatalf("expected placeholder email, got %q", user.Email)
-	}
 	if err := application.syncUpstreamProfile(&user, upstream.Identity{Subject: "100", Email: "verified@example.com", EmailVerified: true}); err != nil {
 		t.Fatalf("sync verified email: %v", err)
 	}
-	if user.Email != "verified@example.com" || user.EmailVerifiedAt == nil {
-		t.Fatalf("verified email was not imported: %#v", user)
+	var email model.UserEmail
+	if err := db.Where("user_id = ? AND normalized_email = ?", user.ID, "verified@example.com").First(&email).Error; err != nil || email.VerifiedAt == nil {
+		t.Fatalf("verified email binding was not imported: %#v err=%v", email, err)
 	}
 }
 

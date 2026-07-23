@@ -97,17 +97,10 @@ button:disabled {
   gap: 12px;
   color: var(--muted);
 }
-.brand-mark {
-  width: 30px;
-  height: 30px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 8px;
-  background: var(--primary);
-  color: var(--primary-text);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+.loading-brand {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
 }
 .app-shell {
   min-height: 100vh;
@@ -173,18 +166,8 @@ button:disabled {
   box-shadow: inset 2px 0 0 var(--text);
   font-weight: 650;
 }
-.sidebar-bottom {
-  margin-top: auto;
-  display: grid;
-  gap: 3px;
-  border-top: 1px solid var(--border);
-  padding-top: 12px;
-}
-.mobile-close,
-.mobile-menu {
-  display: none;
-}
-.sidebar .mobile-close {
+.mobile-brand,
+.mobile-bottom-nav {
   display: none;
 }
 .main-area {
@@ -198,22 +181,13 @@ button:disabled {
   background: color-mix(in srgb, var(--bg) 92%, transparent);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
 }
-.breadcrumbs,
 .top-actions,
 .profile-trigger {
   display: flex;
   align-items: center;
   gap: 9px;
-}
-.breadcrumbs {
-  color: var(--muted);
-  font-size: 13px;
-}
-.breadcrumbs strong {
-  color: var(--text);
-  font-weight: 650;
 }
 .top-actions {
   gap: 5px;
@@ -273,6 +247,21 @@ button:disabled {
 .popover button:hover {
   background: var(--surface-alt);
 }
+.popover-static {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.popover-static span {
+  flex: 1;
+}
+.popover-static strong {
+  color: var(--text);
+  font-weight: 600;
+}
 .page-content {
   max-width: 1320px;
   margin: 0 auto;
@@ -292,9 +281,9 @@ p {
 }
 h1 {
   margin-top: 7px;
-  font-size: clamp(24px, 3vw, 30px);
+  font-size: 30px;
   line-height: 1.18;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 h2 {
   font-size: 14px;
@@ -607,22 +596,6 @@ code {
   font-size: 15px;
   font-weight: 650;
 }
-.auth-locale {
-  position: absolute;
-  top: 35px;
-  right: 32px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.auth-locale button {
-  border: 0;
-  background: transparent;
-  color: inherit;
-  padding: 2px;
-}
 .auth-card {
   width: min(100%, 410px);
   padding: 36px 0 24px;
@@ -698,12 +671,6 @@ code {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 8px;
-}
-.provider-hint {
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.6;
 }
 .form-hint {
   margin: 0;
@@ -1247,50 +1214,62 @@ code {
   }
 }
 @media (max-width: 680px) {
+  .app-shell {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
   .sidebar {
-    position: fixed;
-    z-index: 10;
-    inset: 0 auto 0 0;
-    transform: translateX(-100%);
-    transition: transform 0.2s;
-    box-shadow: var(--shadow);
+    display: none;
   }
-  .sidebar.mobile-open {
-    transform: translateX(0);
-  }
-  .mobile-close,
-  .mobile-menu {
-    display: inline-grid;
-  }
-  .mobile-close {
-    margin-left: auto;
-  }
-  .sidebar .mobile-close {
-    display: inline-grid;
+  .main-area {
+    height: calc(100dvh - 64px - env(safe-area-inset-bottom));
+    overflow-y: auto;
   }
   .topbar {
     padding: 0 16px;
     gap: 10px;
+    justify-content: space-between;
   }
-  .mobile-menu {
-    flex: 0 0 auto;
-  }
-  .breadcrumbs {
-    flex: 1;
-    overflow: hidden;
-  }
-  .breadcrumbs span {
-    display: none;
-  }
-  .top-actions .icon-button {
-    display: none;
+  .mobile-brand {
+    display: block;
+    font-size: 14px;
   }
   .profile-trigger span,
   .profile-trigger svg {
     display: none;
   }
   .page-content {
-    padding: 26px 16px 52px;
+    padding: 26px 16px 96px;
+  }
+  .mobile-bottom-nav {
+    position: fixed;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    overflow: hidden;
+    min-height: 64px;
+    padding: 6px 8px max(6px, env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 96%, transparent);
+  }
+  .mobile-bottom-nav a {
+    min-width: 0;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 4px;
+    color: var(--muted);
+    font-size: 9px;
+    text-align: center;
+  }
+  .mobile-bottom-nav a.active {
+    color: var(--text);
+    font-weight: 650;
   }
   .page-header {
     align-items: flex-start;
@@ -1323,10 +1302,6 @@ code {
     left: 20px;
     top: 22px;
   }
-  .auth-locale {
-    right: 20px;
-    top: 29px;
-  }
   .auth-card {
     padding-top: 65px;
   }
@@ -1353,8 +1328,13 @@ code {
     align-items: stretch;
   }
 }
+@media (max-width: 420px) {
+  h1 {
+    font-size: 24px;
+  }
+}
 
-/* new-api style admin table, settings navigation and task dialogs */
+/* Admin tables, settings navigation and task dialogs */
 .data-table-shell {
   overflow: hidden;
   border: 1px solid var(--border);
@@ -1976,16 +1956,6 @@ code {
   color: var(--muted);
   font-size: 10px;
 }
-.settings-back {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 10px 15px;
-  margin-bottom: 5px;
-  border-bottom: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 12px;
-}
 .settings-nav-group {
   display: grid;
   gap: 3px;
@@ -2026,7 +1996,6 @@ code {
     overflow-x: auto;
     gap: 4px;
   }
-  .settings-back,
   .settings-nav-group > span {
     display: none;
   }
@@ -2084,10 +2053,23 @@ code {
     padding-right: 18px;
   }
   .profile-settings-nav {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .profile-nav-account {
-    grid-column: auto;
+    grid-column: 1 / -1;
+  }
+  .system-settings-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+  .system-settings-nav .settings-nav-group {
+    display: contents;
+    min-width: 0;
+  }
+  .system-settings-nav .settings-nav-group button {
+    width: 100%;
+    padding-inline: 8px;
   }
   .section-heading {
     flex-direction: column;

@@ -34,7 +34,7 @@ func (s *Server) adminListUsers(c *gin.Context) {
 	query := s.DB.Model(&model.User{})
 	if q := strings.ToLower(strings.TrimSpace(c.Query("q"))); q != "" {
 		like := "%" + q + "%"
-		query = query.Where("LOWER(username) LIKE ? OR LOWER(email) LIKE ? OR LOWER(display_name) LIKE ?", like, like, like)
+		query = query.Where("LOWER(username) LIKE ? OR LOWER(display_name) LIKE ? OR EXISTS (SELECT 1 FROM user_emails WHERE user_emails.user_id = users.id AND user_emails.normalized_email LIKE ?)", like, like, like)
 	}
 	if status := strings.TrimSpace(c.Query("status")); status != "" && status != "all" {
 		query = query.Where("status = ?", status)
@@ -64,8 +64,8 @@ func (s *Server) adminListUsers(c *gin.Context) {
 	items := make([]gin.H, 0, len(users))
 	for index := range users {
 		var emailCount, identityCount int64
-		_ = s.DB.Model(&model.UserEmail{}).Where("user_id = ? AND disabled_at IS NULL", users[index].ID).Count(&emailCount).Error
-		_ = s.DB.Model(&model.UpstreamIdentity{}).Where("user_id = ? AND disabled_at IS NULL", users[index].ID).Count(&identityCount).Error
+		_ = s.DB.Model(&model.UserEmail{}).Where("user_id = ?", users[index].ID).Count(&emailCount).Error
+		_ = s.DB.Model(&model.UpstreamIdentity{}).Where("user_id = ?", users[index].ID).Count(&identityCount).Error
 		item := publicUser(&users[index])
 		item["email_count"] = emailCount
 		item["identity_count"] = identityCount
@@ -88,16 +88,8 @@ func (s *Server) adminGetUser(c *gin.Context) {
 		s.serveError(c, http.StatusNotFound, "用户不存在")
 		return
 	}
-	emails, _ := s.userEmails(user.ID, true)
-	var identities []model.UpstreamIdentity
-	_ = s.DB.Preload("Provider").Where("user_id = ? OR original_user_id = ?", user.ID, user.ID).Order("id ASC").Find(&identities).Error
-	var mergeSources []model.User
-	_ = s.DB.Where("merged_into_user_id = ?", user.ID).Order("id ASC").Find(&mergeSources).Error
 	data := publicUser(&user)
-	data["emails"] = emails
-	data["identities"] = identities
-	data["bindings"] = s.userBindingViews(user.ID, true)
-	data["merge_sources"] = mergeSources
+	data["bindings"] = s.userBindingViews(user.ID)
 	data["deactivated_at"] = user.DeactivatedAt
 	data["merged_into_user_id"] = user.MergedIntoUserID
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
@@ -220,36 +212,28 @@ func (s *Server) adminUpdateUser(c *gin.Context) {
 }
 
 type userBindingView struct {
-	Kind           string     `json:"kind"`
-	DisplayName    string     `json:"display_name"`
-	Identifier     string     `json:"identifier"`
-	AccountName    string     `json:"account_name,omitempty"`
-	Email          string     `json:"email,omitempty"`
-	BindingType    string     `json:"binding_type"`
-	BindingID      uint64     `json:"binding_id"`
-	OriginalUserID uint64     `json:"original_user_id"`
-	Primary        bool       `json:"primary"`
-	Verified       bool       `json:"verified"`
-	Disabled       bool       `json:"disabled"`
-	CreatedAt      time.Time  `json:"created_at"`
-	LastLoginAt    *time.Time `json:"last_login_at,omitempty"`
+	Kind        string     `json:"kind"`
+	DisplayName string     `json:"display_name"`
+	Identifier  string     `json:"identifier"`
+	AccountName string     `json:"account_name,omitempty"`
+	Email       string     `json:"email,omitempty"`
+	BindingType string     `json:"binding_type"`
+	BindingID   uint64     `json:"binding_id"`
+	Verified    bool       `json:"verified"`
+	CreatedAt   time.Time  `json:"created_at"`
+	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
 }
 
-func (s *Server) userBindingViews(userID uint64, includeDisabled bool) []userBindingView {
+func (s *Server) userBindingViews(userID uint64) []userBindingView {
 	items := make([]userBindingView, 0)
 	emailQuery := s.DB.Where("user_id = ?", userID)
 	identityQuery := s.DB.Preload("Provider").Where("user_id = ?", userID)
-	if !includeDisabled {
-		emailQuery = emailQuery.Where("disabled_at IS NULL")
-		identityQuery = identityQuery.Where("disabled_at IS NULL")
-	}
 	var emails []model.UserEmail
 	_ = emailQuery.Order("id ASC").Find(&emails).Error
 	for _, email := range emails {
 		items = append(items, userBindingView{
 			Kind: "email", DisplayName: "邮箱", Identifier: email.Email, BindingType: "email", BindingID: email.ID,
-			OriginalUserID: email.OriginalUserID, Primary: email.Primary, Verified: email.VerifiedAt != nil,
-			Disabled: email.DisabledAt != nil, CreatedAt: email.CreatedAt,
+			Verified: email.VerifiedAt != nil, CreatedAt: email.CreatedAt,
 		})
 	}
 	var identities []model.UpstreamIdentity
@@ -263,8 +247,7 @@ func (s *Server) userBindingViews(userID uint64, includeDisabled bool) []userBin
 		items = append(items, userBindingView{
 			Kind: identity.Provider.Kind, DisplayName: identity.Provider.DisplayName, Identifier: identity.ExternalID,
 			AccountName: identity.ExternalName, Email: identity.ExternalEmail, BindingType: "upstream", BindingID: identity.ID,
-			OriginalUserID: identity.OriginalUserID, Verified: identity.VerifiedAt != nil, Disabled: identity.DisabledAt != nil,
-			CreatedAt: identity.CreatedAt, LastLoginAt: lastLoginAt,
+			Verified: identity.VerifiedAt != nil, CreatedAt: identity.CreatedAt, LastLoginAt: lastLoginAt,
 		})
 	}
 	return items
@@ -297,17 +280,15 @@ func (s *Server) adminResetMFA(c *gin.Context) {
 }
 
 func (s *Server) adminListChannels(c *gin.Context) {
-	var emailCount, activeEmailCount int64
+	var emailCount int64
 	_ = s.DB.Model(&model.UserEmail{}).Count(&emailCount).Error
-	_ = s.DB.Model(&model.UserEmail{}).Where("disabled_at IS NULL").Count(&activeEmailCount).Error
-	items := []gin.H{{"kind": "email", "display_name": "邮箱", "bindings": emailCount, "active_bindings": activeEmailCount}}
+	items := []gin.H{{"kind": "email", "display_name": "邮箱", "bindings": emailCount}}
 	var providers []model.UpstreamProvider
 	_ = s.DB.Order("id ASC").Find(&providers).Error
 	for _, provider := range providers {
-		var total, active int64
+		var total int64
 		_ = s.DB.Model(&model.UpstreamIdentity{}).Where("provider_id = ?", provider.ID).Count(&total).Error
-		_ = s.DB.Model(&model.UpstreamIdentity{}).Where("provider_id = ? AND disabled_at IS NULL", provider.ID).Count(&active).Error
-		items = append(items, gin.H{"kind": provider.Kind, "display_name": provider.DisplayName, "provider_id": provider.ID, "enabled": provider.Enabled, "configured": providerConfigured(provider), "bindings": total, "active_bindings": active})
+		items = append(items, gin.H{"kind": provider.Kind, "display_name": provider.DisplayName, "provider_id": provider.ID, "enabled": provider.Enabled, "configured": providerConfigured(provider), "bindings": total})
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
 }
@@ -328,7 +309,7 @@ func (s *Server) adminListChannelBindings(c *gin.Context) {
 		for _, record := range records {
 			var user model.User
 			_ = s.DB.First(&user, record.UserID).Error
-			items = append(items, gin.H{"id": record.ID, "user": publicUser(&user), "email": record.Email, "primary": record.Primary, "verified_at": record.VerifiedAt, "disabled_at": record.DisabledAt, "original_user_id": record.OriginalUserID, "created_at": record.CreatedAt})
+			items = append(items, gin.H{"id": record.ID, "user": publicUser(&user), "email": record.Email, "verified_at": record.VerifiedAt, "created_at": record.CreatedAt})
 		}
 		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"items": items, "page": page, "page_size": pageSize, "total": total}})
 		return
@@ -350,26 +331,25 @@ func (s *Server) adminListChannelBindings(c *gin.Context) {
 	for _, record := range records {
 		var user model.User
 		_ = s.DB.First(&user, record.UserID).Error
-		items = append(items, gin.H{"id": record.ID, "user": publicUser(&user), "external_id": record.ExternalID, "external_name": record.ExternalName, "external_email": record.ExternalEmail, "verified_at": record.VerifiedAt, "disabled_at": record.DisabledAt, "original_user_id": record.OriginalUserID, "last_login_at": record.LastLoginAt, "created_at": record.CreatedAt})
+		items = append(items, gin.H{"id": record.ID, "user": publicUser(&user), "external_id": record.ExternalID, "external_name": record.ExternalName, "external_email": record.ExternalEmail, "verified_at": record.VerifiedAt, "last_login_at": record.LastLoginAt, "created_at": record.CreatedAt})
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"items": items, "page": page, "page_size": pageSize, "total": total}})
 }
 
-func (s *Server) adminDisableEmailBinding(c *gin.Context) {
-	s.adminDisableBinding(c, true)
+func (s *Server) adminDeleteEmailBinding(c *gin.Context) {
+	s.adminDeleteBinding(c, true)
 }
 
-func (s *Server) adminDisableUpstreamBinding(c *gin.Context) {
-	s.adminDisableBinding(c, false)
+func (s *Server) adminDeleteUpstreamBinding(c *gin.Context) {
+	s.adminDeleteBinding(c, false)
 }
 
-func (s *Server) adminDisableBinding(c *gin.Context, email bool) {
+func (s *Server) adminDeleteBinding(c *gin.Context, email bool) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		s.serveError(c, http.StatusBadRequest, "绑定编号无效")
+		s.serveError(c, http.StatusBadRequest, "绑定信息无效")
 		return
 	}
-	now := time.Now()
 	var userID uint64
 	if email {
 		var record model.UserEmail
@@ -378,20 +358,8 @@ func (s *Server) adminDisableBinding(c *gin.Context, email bool) {
 			return
 		}
 		userID = record.UserID
-		if err := s.DB.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Model(&record).Updates(map[string]any{"disabled_at": &now, "primary": false}).Error; err != nil {
-				return err
-			}
-			var replacement model.UserEmail
-			if err := tx.Where("user_id = ? AND disabled_at IS NULL", userID).Order("id ASC").First(&replacement).Error; err == nil {
-				if err := tx.Model(&replacement).Update("primary", true).Error; err != nil {
-					return err
-				}
-				return s.ensurePrimaryEmailSnapshot(tx, userID)
-			}
-			return tx.Model(&model.User{}).Where("id = ?", userID).Updates(map[string]any{"email": "", "email_verified_at": nil}).Error
-		}); err != nil {
-			s.serveError(c, http.StatusInternalServerError, "禁用邮箱绑定失败")
+		if err := s.DB.Transaction(func(tx *gorm.DB) error { return s.deleteEmailBinding(tx, userID, id, true) }); err != nil {
+			s.serveError(c, http.StatusInternalServerError, "删除邮箱绑定失败")
 			return
 		}
 	} else {
@@ -401,12 +369,12 @@ func (s *Server) adminDisableBinding(c *gin.Context, email bool) {
 			return
 		}
 		userID = record.UserID
-		if err := s.DB.Model(&record).Update("disabled_at", &now).Error; err != nil {
-			s.serveError(c, http.StatusInternalServerError, "禁用第三方绑定失败")
+		if err := s.DB.Transaction(func(tx *gorm.DB) error { return s.deleteUpstreamBinding(tx, userID, id, true) }); err != nil {
+			s.serveError(c, http.StatusInternalServerError, "删除第三方绑定失败")
 			return
 		}
 	}
-	s.audit(c, "admin.binding_disabled", s.user(c).ID, fmt.Sprintf("target_user_id=%d binding_id=%d", userID, id))
+	s.audit(c, "admin.binding_deleted", s.user(c).ID, fmt.Sprintf("target_user_id=%d", userID))
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 

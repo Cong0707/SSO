@@ -11,13 +11,11 @@ type User struct {
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
 	Username             string     `gorm:"size:64;uniqueIndex;not null" json:"username"`
-	Email                string     `gorm:"size:254;index" json:"email"`
 	PasswordHash         string     `gorm:"size:512;not null" json:"-"`
 	PasswordConfigured   bool       `gorm:"not null;default:true" json:"password_configured"`
 	DisplayName          string     `gorm:"size:100" json:"display_name"`
 	AvatarURL            string     `gorm:"size:1024" json:"avatar_url"`
 	Locale               string     `gorm:"size:12;not null" json:"locale"`
-	EmailVerifiedAt      *time.Time `json:"email_verified_at"`
 	MFAEnabled           bool       `gorm:"not null" json:"mfa_enabled"`
 	MFASecretEncrypted   string     `gorm:"type:text" json:"-"`
 	MFABackupCodeHashes  string     `gorm:"type:text" json:"-"`
@@ -34,12 +32,9 @@ type UserEmail struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	UserID          uint64     `gorm:"not null;index" json:"user_id"`
-	OriginalUserID  uint64     `gorm:"not null;index" json:"original_user_id"`
 	Email           string     `gorm:"size:254;not null" json:"email"`
 	NormalizedEmail string     `gorm:"size:254;uniqueIndex;not null" json:"-"`
-	Primary         bool       `gorm:"not null;index" json:"primary"`
 	VerifiedAt      *time.Time `gorm:"index" json:"verified_at"`
-	DisabledAt      *time.Time `gorm:"index" json:"disabled_at"`
 }
 
 type Session struct {
@@ -168,20 +163,18 @@ type UpstreamProvider struct {
 }
 
 type UpstreamIdentity struct {
-	ID             uint64           `gorm:"primaryKey" json:"id"`
-	CreatedAt      time.Time        `json:"created_at"`
-	UpdatedAt      time.Time        `json:"updated_at"`
-	UserID         uint64           `gorm:"not null;index" json:"user_id"`
-	OriginalUserID uint64           `gorm:"not null;index" json:"original_user_id"`
-	ProviderID     uint64           `gorm:"not null;uniqueIndex:idx_provider_external" json:"provider_id"`
-	ExternalID     string           `gorm:"size:255;not null;uniqueIndex:idx_provider_external" json:"external_id"`
-	ExternalName   string           `gorm:"size:255" json:"external_name"`
-	ExternalEmail  string           `gorm:"size:254" json:"external_email"`
-	Metadata       string           `gorm:"type:text" json:"metadata,omitempty"`
-	VerifiedAt     *time.Time       `gorm:"index" json:"verified_at"`
-	DisabledAt     *time.Time       `gorm:"index" json:"disabled_at"`
-	LastLoginAt    time.Time        `json:"last_login_at"`
-	Provider       UpstreamProvider `gorm:"foreignKey:ProviderID" json:"provider"`
+	ID            uint64           `gorm:"primaryKey" json:"id"`
+	CreatedAt     time.Time        `json:"created_at"`
+	UpdatedAt     time.Time        `json:"updated_at"`
+	UserID        uint64           `gorm:"not null;index" json:"user_id"`
+	ProviderID    uint64           `gorm:"not null;uniqueIndex:idx_provider_external" json:"provider_id"`
+	ExternalID    string           `gorm:"size:255;not null;uniqueIndex:idx_provider_external" json:"external_id"`
+	ExternalName  string           `gorm:"size:255" json:"external_name"`
+	ExternalEmail string           `gorm:"size:254" json:"external_email"`
+	Metadata      string           `gorm:"type:text" json:"metadata,omitempty"`
+	VerifiedAt    *time.Time       `gorm:"index" json:"verified_at"`
+	LastLoginAt   time.Time        `json:"last_login_at"`
+	Provider      UpstreamProvider `gorm:"foreignKey:ProviderID" json:"provider"`
 }
 
 type UpstreamOAuthState struct {

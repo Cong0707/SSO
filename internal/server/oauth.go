@@ -191,6 +191,17 @@ func (s *Server) oauthConsent(c *gin.Context) {
 }
 
 func (s *Server) oauthToken(c *gin.Context) {
+	if err := c.Request.ParseForm(); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+		return
+	}
+	clientID := c.Request.Form.Get("client_id")
+	if basicID, _, ok := c.Request.BasicAuth(); ok {
+		clientID = basicID
+	}
+	if !s.enforceRateLimitPair(c, "oauth_token", clientID, s.Cfg.RateLimitOAuthToken, time.Minute) {
+		return
+	}
 	if err := s.OAuth.HandleTokenRequest(c.Writer, c.Request); err != nil {
 		return
 	}
@@ -238,8 +249,9 @@ func (s *Server) oauthUserInfo(c *gin.Context) {
 		claims["locale"] = user.Locale
 	}
 	if allowed["email"] {
-		claims["email"] = user.Email
-		claims["email_verified"] = user.EmailVerifiedAt != nil
+		for key, value := range s.emailClaims(user.ID) {
+			claims[key] = value
+		}
 	}
 	c.JSON(http.StatusOK, claims)
 }
@@ -255,7 +267,12 @@ func (s *Server) oidcExtensionFields(info oauth2.TokenInfo) map[string]interface
 	}
 	now := time.Now()
 	authTime := now.Unix()
-	claims := jwt.MapClaims{"iss": s.Cfg.Issuer, "sub": userID, "aud": info.GetClientID(), "iat": now.Unix(), "exp": now.Add(15 * time.Minute).Unix(), "name": user.DisplayName, "preferred_username": user.Username, "email": user.Email, "email_verified": user.EmailVerifiedAt != nil}
+	claims := jwt.MapClaims{"iss": s.Cfg.Issuer, "sub": userID, "aud": info.GetClientID(), "iat": now.Unix(), "exp": now.Add(15 * time.Minute).Unix(), "name": user.DisplayName, "preferred_username": user.Username}
+	if scopeContains(info.GetScope(), "email") {
+		for key, value := range s.emailClaims(user.ID) {
+			claims[key] = value
+		}
+	}
 	if extended, ok := info.(oauth2.ExtendableTokenInfo); ok {
 		if nonce := extended.GetExtension().Get("nonce"); nonce != "" {
 			claims["nonce"] = nonce
@@ -274,6 +291,17 @@ func (s *Server) oidcExtensionFields(info oauth2.TokenInfo) map[string]interface
 		return nil
 	}
 	return map[string]interface{}{"id_token": signed}
+}
+
+func (s *Server) emailClaims(userID uint64) map[string]interface{} {
+	var emails []string
+	_ = s.DB.Model(&model.UserEmail{}).Where("user_id = ? AND verified_at IS NOT NULL", userID).Order("id ASC").Pluck("email", &emails).Error
+	claims := map[string]interface{}{"emails": emails}
+	if len(emails) == 1 {
+		claims["email"] = emails[0]
+		claims["email_verified"] = true
+	}
+	return claims
 }
 
 func (s *Server) oidcDiscovery(c *gin.Context) {

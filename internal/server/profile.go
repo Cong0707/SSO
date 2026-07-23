@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,24 +22,17 @@ import (
 
 func (s *Server) profile(c *gin.Context) {
 	user := s.user(c)
-	emails, _ := s.userEmails(user.ID, false)
-	var identities []model.UpstreamIdentity
-	_ = s.DB.Preload("Provider").Where("user_id = ? AND disabled_at IS NULL", user.ID).Order("id ASC").Find(&identities).Error
 	data := publicUser(user)
-	data["emails"] = emails
-	data["identities"] = identities
-	data["bindings"] = s.userBindingViews(user.ID, false)
+	data["bindings"] = s.userBindingViews(user.ID)
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }
 
 func (s *Server) updateProfile(c *gin.Context) {
 	var input struct {
 		DisplayName          string `json:"display_name"`
-		Email                string `json:"email"`
 		AvatarURL            string `json:"avatar_url"`
 		Locale               string `json:"locale"`
 		SecurityEmailEnabled bool   `json:"security_email_enabled"`
-		CurrentPassword      string `json:"current_password"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		s.serveError(c, http.StatusBadRequest, "请求格式错误")
@@ -46,27 +40,18 @@ func (s *Server) updateProfile(c *gin.Context) {
 	}
 	user := s.user(c)
 	input.DisplayName = strings.TrimSpace(input.DisplayName)
-	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
-	if len(input.DisplayName) > 100 || (input.Email != "" && !validEmail(input.Email)) || !validateURL(input.AvatarURL, true) {
+	if len(input.DisplayName) > 100 || !validateURL(input.AvatarURL, true) {
 		s.serveError(c, http.StatusBadRequest, "资料字段格式不正确")
 		return
 	}
 	if input.Locale != "zh-CN" && input.Locale != "en" {
 		input.Locale = "zh-CN"
 	}
-	if input.Email != "" && input.Email != user.Email {
-		s.serveError(c, http.StatusBadRequest, "更换邮箱需要先完成邮箱验证码校验")
-		return
-	}
 	user.DisplayName = input.DisplayName
 	user.AvatarURL = strings.TrimSpace(input.AvatarURL)
 	user.Locale = input.Locale
 	user.SecurityEmailEnabled = input.SecurityEmailEnabled
 	if err := s.DB.Save(user).Error; err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "unique") || strings.Contains(strings.ToLower(err.Error()), "duplicate") {
-			s.serveError(c, http.StatusConflict, "邮箱已被使用")
-			return
-		}
 		s.serveError(c, http.StatusInternalServerError, "保存资料失败")
 		return
 	}
@@ -93,8 +78,11 @@ func (s *Server) prepareProfileEmail(c *gin.Context) {
 		s.serveError(c, http.StatusBadRequest, "邮箱格式不正确")
 		return
 	}
+	if !s.enforceRateLimitPair(c, "profile_email", email, s.Cfg.RateLimitEmail, time.Hour) {
+		return
+	}
 	var count int64
-	if s.DB.Model(&model.UserEmail{}).Where("normalized_email = ? AND disabled_at IS NULL", email).Count(&count); count > 0 {
+	if s.DB.Model(&model.UserEmail{}).Where("normalized_email = ?", email).Count(&count); count > 0 {
 		s.serveError(c, http.StatusConflict, "邮箱已被使用")
 		return
 	}
@@ -145,20 +133,54 @@ func (s *Server) completeProfileEmail(c *gin.Context) {
 		if result.Error != nil || result.RowsAffected != 1 {
 			return fmt.Errorf("邮箱验证流程已被使用")
 		}
-		if err := tx.Model(&model.UserEmail{}).Where("user_id = ?", user.ID).Update("primary", false).Error; err != nil {
-			return err
-		}
-		email := model.UserEmail{UserID: user.ID, OriginalUserID: user.ID, Email: flow.Email, NormalizedEmail: flow.Email, Primary: true, VerifiedAt: &now}
+		email := model.UserEmail{UserID: user.ID, Email: flow.Email, NormalizedEmail: flow.Email, VerifiedAt: &now}
 		if err := tx.Create(&email).Error; err != nil {
 			return err
 		}
-		return tx.Model(user).Updates(map[string]any{"email": flow.Email, "email_verified_at": &now}).Error
+		return nil
 	})
 	if err != nil {
 		s.serveError(c, http.StatusConflict, "邮箱已被使用")
 		return
 	}
 	s.audit(c, "email.bound", user.ID, flow.Email)
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (s *Server) deleteOwnEmailBinding(c *gin.Context) {
+	s.deleteOwnBinding(c, true)
+}
+
+func (s *Server) deleteOwnUpstreamBinding(c *gin.Context) {
+	s.deleteOwnBinding(c, false)
+}
+
+func (s *Server) deleteOwnBinding(c *gin.Context, email bool) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		s.serveError(c, http.StatusBadRequest, "绑定信息无效")
+		return
+	}
+	userID := s.user(c).ID
+	err = s.DB.Transaction(func(tx *gorm.DB) error {
+		if email {
+			return s.deleteEmailBinding(tx, userID, id, false)
+		}
+		return s.deleteUpstreamBinding(tx, userID, id, false)
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			s.serveError(c, http.StatusNotFound, "绑定不存在")
+			return
+		}
+		if err.Error() == "账号必须保留至少一个绑定" {
+			s.serveError(c, http.StatusConflict, err.Error())
+			return
+		}
+		s.serveError(c, http.StatusInternalServerError, "解绑失败")
+		return
+	}
+	s.audit(c, "binding.deleted", userID, fmt.Sprintf("type=%s", map[bool]string{true: "email", false: "upstream"}[email]))
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
@@ -208,7 +230,7 @@ func (s *Server) changePassword(c *gin.Context) {
 
 func (s *Server) setupMFA(c *gin.Context) {
 	user := s.user(c)
-	key, err := totp.Generate(totp.GenerateOpts{Issuer: s.Cfg.Issuer, AccountName: user.Email})
+	key, err := totp.Generate(totp.GenerateOpts{Issuer: "xem SSO", AccountName: user.Username})
 	if err != nil {
 		s.serveError(c, http.StatusInternalServerError, "生成 MFA 密钥失败")
 		return

@@ -15,8 +15,8 @@ import (
 func TestMergeAccountsPreservesSourceAndMovesBindings(t *testing.T) {
 	db := openTestDatabase(t)
 	application := &Server{DB: db}
-	first := model.User{Username: "first", Email: "first@example.com", PasswordHash: "hash", PasswordConfigured: true, DisplayName: "First", Locale: "zh-CN", Role: "user", Status: "active"}
-	second := model.User{Username: "second", Email: "second@example.com", PasswordHash: "hash", PasswordConfigured: true, DisplayName: "Second", Locale: "zh-CN", Role: "admin", Status: "active"}
+	first := model.User{Username: "first", PasswordHash: "hash", PasswordConfigured: true, DisplayName: "First", Locale: "zh-CN", Role: "user", Status: "active"}
+	second := model.User{Username: "second", PasswordHash: "hash", PasswordConfigured: true, DisplayName: "Second", Locale: "zh-CN", Role: "admin", Status: "active"}
 	if err := db.Create(&first).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -25,8 +25,8 @@ func TestMergeAccountsPreservesSourceAndMovesBindings(t *testing.T) {
 	}
 	now := time.Now()
 	emails := []model.UserEmail{
-		{UserID: first.ID, OriginalUserID: first.ID, Email: "first@example.com", NormalizedEmail: "first@example.com", Primary: true, VerifiedAt: &now},
-		{UserID: second.ID, OriginalUserID: second.ID, Email: "second@example.com", NormalizedEmail: "second@example.com", Primary: true, VerifiedAt: &now},
+		{UserID: first.ID, Email: "first@example.com", NormalizedEmail: "first@example.com", VerifiedAt: &now},
+		{UserID: second.ID, Email: "second@example.com", NormalizedEmail: "second@example.com", VerifiedAt: &now},
 	}
 	if err := db.Create(&emails).Error; err != nil {
 		t.Fatal(err)
@@ -36,8 +36,8 @@ func TestMergeAccountsPreservesSourceAndMovesBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 	identities := []model.UpstreamIdentity{
-		{UserID: first.ID, OriginalUserID: first.ID, ProviderID: provider.ID, ExternalID: "github-1", LastLoginAt: now},
-		{UserID: second.ID, OriginalUserID: second.ID, ProviderID: provider.ID, ExternalID: "github-2", LastLoginAt: now},
+		{UserID: first.ID, ProviderID: provider.ID, ExternalID: "github-1", LastLoginAt: now},
+		{UserID: second.ID, ProviderID: provider.ID, ExternalID: "github-2", LastLoginAt: now},
 	}
 	if err := db.Create(&identities).Error; err != nil {
 		t.Fatal(err)
@@ -63,9 +63,9 @@ func TestMergeAccountsPreservesSourceAndMovesBindings(t *testing.T) {
 	if movedEmails != 2 || movedIdentities != 2 {
 		t.Fatalf("bindings were not combined: emails=%d identities=%d", movedEmails, movedIdentities)
 	}
-	var originalEmail model.UserEmail
-	if err := db.Where("normalized_email = ?", "second@example.com").First(&originalEmail).Error; err != nil || originalEmail.OriginalUserID != second.ID {
-		t.Fatalf("binding provenance was lost: email=%#v err=%v", originalEmail, err)
+	var movedEmail model.UserEmail
+	if err := db.Where("normalized_email = ? AND user_id = ?", "second@example.com", first.ID).First(&movedEmail).Error; err != nil {
+		t.Fatalf("merged email was not moved: email=%#v err=%v", movedEmail, err)
 	}
 	var activeSessions int64
 	_ = db.Model(&model.Session{}).Where("user_id IN ? AND revoked_at IS NULL", []uint64{first.ID, second.ID}).Count(&activeSessions).Error

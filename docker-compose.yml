@@ -14,11 +14,28 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-sso-dev-redis-password}
+    command:
+      - /bin/sh
+      - -c
+      - exec redis-server --save "" --appendonly no --requirepass "$$REDIS_PASSWORD"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   sso:
     build: .
     restart: unless-stopped
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "8080:8080"
@@ -29,6 +46,17 @@ services:
       SSO_EMAIL_DEBUG: ${SSO_EMAIL_DEBUG:-false}
       SSO_DATABASE_DRIVER: postgres
       SSO_DATABASE_DSN: "host=postgres user=${POSTGRES_USER:-sso} password=${POSTGRES_PASSWORD:-sso-dev-password} dbname=${POSTGRES_DB:-sso} port=5432 sslmode=disable TimeZone=UTC"
+      SSO_RATE_LIMIT_ENABLED: ${SSO_RATE_LIMIT_ENABLED:-true}
+      SSO_REDIS_ADDR: redis:6379
+      SSO_REDIS_PASSWORD: ${REDIS_PASSWORD:-sso-dev-redis-password}
+      SSO_REDIS_DB: ${SSO_REDIS_DB:-0}
+      SSO_REDIS_TLS: "false"
+      SSO_REDIS_KEY_PREFIX: ${SSO_REDIS_KEY_PREFIX:-xem-sso}
+      SSO_RATE_LIMIT_IDENTIFY: ${SSO_RATE_LIMIT_IDENTIFY:-30}
+      SSO_RATE_LIMIT_LOGIN: ${SSO_RATE_LIMIT_LOGIN:-10}
+      SSO_RATE_LIMIT_EMAIL: ${SSO_RATE_LIMIT_EMAIL:-5}
+      SSO_RATE_LIMIT_OAUTH_TOKEN: ${SSO_RATE_LIMIT_OAUTH_TOKEN:-120}
+      SSO_RATE_LIMIT_SENSITIVE: ${SSO_RATE_LIMIT_SENSITIVE:-60}
       SSO_DATA_DIR: /app/data
       SSO_MASTER_KEY_FILE: /app/data/master.key
       SSO_OIDC_SIGNING_KEY_FILE: /app/data/oidc-signing.pem

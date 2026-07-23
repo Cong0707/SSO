@@ -28,6 +28,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("initialize SSO server: %v", err)
 	}
+	defer func() {
+		if err := application.Close(); err != nil {
+			log.Printf("close SSO dependencies: %v", err)
+		}
+	}()
 
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
@@ -39,7 +44,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Identity Center listening on %s (issuer %s)", cfg.Addr, cfg.Issuer)
+		log.Printf("xem SSO listening on %s (issuer %s)", cfg.Addr, cfg.Issuer)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("serve HTTP: %v", err)
 		}

@@ -8,26 +8,17 @@ import (
 
 	"github.com/Cong0707/sso/internal/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
-func (s *Server) findUserByIdentifier(identifier string) (model.User, error) {
+func (s *Server) findUserByEmail(email string) (model.User, error) {
 	var user model.User
-	identifier = strings.ToLower(strings.TrimSpace(identifier))
+	email = strings.ToLower(strings.TrimSpace(email))
 	err := s.DB.Where(
-		"LOWER(username) = ? OR EXISTS (SELECT 1 FROM user_emails WHERE user_emails.user_id = users.id AND user_emails.normalized_email = ? AND user_emails.disabled_at IS NULL)",
-		identifier, identifier,
+		"EXISTS (SELECT 1 FROM user_emails WHERE user_emails.user_id = users.id AND user_emails.normalized_email = ?)",
+		email,
 	).First(&user).Error
 	return user, err
-}
-
-func (s *Server) userEmails(userID uint64, includeDisabled bool) ([]model.UserEmail, error) {
-	query := s.DB.Where("user_id = ?", userID)
-	if !includeDisabled {
-		query = query.Where("disabled_at IS NULL")
-	}
-	var emails []model.UserEmail
-	err := query.Order("primary DESC, id ASC").Find(&emails).Error
-	return emails, err
 }
 
 func (s *Server) mergeAccounts(firstID, secondID uint64) (model.User, bool, error) {
@@ -103,18 +94,51 @@ func (s *Server) mergeAccounts(firstID, secondID uint64) (model.User, bool, erro
 	return target, err == nil, err
 }
 
-func (s *Server) ensurePrimaryEmailSnapshot(tx *gorm.DB, userID uint64) error {
-	var email model.UserEmail
-	if err := tx.Where("user_id = ? AND disabled_at IS NULL", userID).Order("primary DESC, id ASC").First(&email).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		return err
-	}
+func (s *Server) bindingRemovalAllowed(tx *gorm.DB, userID uint64, removingEmail bool) error {
 	var user model.User
-	if err := tx.First(&user, userID).Error; err != nil {
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&user, userID).Error; err != nil {
 		return err
 	}
-	updates := map[string]any{"email": email.Email, "email_verified_at": email.VerifiedAt}
-	return tx.Model(&user).Updates(updates).Error
+	var emailCount, identityCount int64
+	if err := tx.Model(&model.UserEmail{}).Where("user_id = ?", userID).Count(&emailCount).Error; err != nil {
+		return err
+	}
+	if err := tx.Model(&model.UpstreamIdentity{}).Where("user_id = ?", userID).Count(&identityCount).Error; err != nil {
+		return err
+	}
+	if removingEmail {
+		emailCount--
+	} else {
+		identityCount--
+	}
+	if emailCount+identityCount < 1 {
+		return errors.New("账号必须保留至少一个绑定")
+	}
+	return nil
+}
+
+func (s *Server) deleteEmailBinding(tx *gorm.DB, userID, bindingID uint64, allowLast bool) error {
+	var record model.UserEmail
+	if err := tx.Where("id = ? AND user_id = ?", bindingID, userID).First(&record).Error; err != nil {
+		return err
+	}
+	if !allowLast {
+		if err := s.bindingRemovalAllowed(tx, userID, true); err != nil {
+			return err
+		}
+	}
+	return tx.Delete(&record).Error
+}
+
+func (s *Server) deleteUpstreamBinding(tx *gorm.DB, userID, bindingID uint64, allowLast bool) error {
+	var record model.UpstreamIdentity
+	if err := tx.Where("id = ? AND user_id = ?", bindingID, userID).First(&record).Error; err != nil {
+		return err
+	}
+	if !allowLast {
+		if err := s.bindingRemovalAllowed(tx, userID, false); err != nil {
+			return err
+		}
+	}
+	return tx.Delete(&record).Error
 }

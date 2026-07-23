@@ -32,6 +32,18 @@ type Config struct {
 	AllowKeyGeneration  bool
 	TrustedProxies      []string
 	MasterKey           []byte
+	RateLimitEnabled    bool
+	RateLimitIdentify   int
+	RateLimitLogin      int
+	RateLimitEmail      int
+	RateLimitOAuthToken int
+	RateLimitSensitive  int
+	RedisAddr           string
+	RedisPassword       string
+	RedisDB             int
+	RedisTLS            bool
+	RedisTLSServerName  string
+	RedisKeyPrefix      string
 }
 
 func Load() (Config, error) {
@@ -51,11 +63,29 @@ func Load() (Config, error) {
 		EmailDebug:          envBool("SSO_EMAIL_DEBUG", databaseDriver == "sqlite" || databaseDriver == "sqlite3"),
 		AllowKeyGeneration:  envBool("SSO_ALLOW_KEY_GENERATION", databaseDriver == "sqlite" || databaseDriver == "sqlite3"),
 		TrustedProxies:      envList("SSO_TRUSTED_PROXIES"),
+		RateLimitEnabled:    envBool("SSO_RATE_LIMIT_ENABLED", databaseDriver != "sqlite" && databaseDriver != "sqlite3"),
+		RateLimitIdentify:   envInt("SSO_RATE_LIMIT_IDENTIFY", 30),
+		RateLimitLogin:      envInt("SSO_RATE_LIMIT_LOGIN", 10),
+		RateLimitEmail:      envInt("SSO_RATE_LIMIT_EMAIL", 5),
+		RateLimitOAuthToken: envInt("SSO_RATE_LIMIT_OAUTH_TOKEN", 120),
+		RateLimitSensitive:  envInt("SSO_RATE_LIMIT_SENSITIVE", 60),
+		RedisAddr:           strings.TrimSpace(os.Getenv("SSO_REDIS_ADDR")),
+		RedisPassword:       os.Getenv("SSO_REDIS_PASSWORD"),
+		RedisDB:             envNonNegativeInt("SSO_REDIS_DB", 0),
+		RedisTLS:            envBool("SSO_REDIS_TLS", false),
+		RedisTLSServerName:  strings.TrimSpace(os.Getenv("SSO_REDIS_TLS_SERVER_NAME")),
+		RedisKeyPrefix:      strings.Trim(strings.TrimSpace(env("SSO_REDIS_KEY_PREFIX", "xem-sso")), ":"),
 	}
 
 	issuer, err := url.Parse(cfg.Issuer)
 	if err != nil || issuer.Scheme == "" || issuer.Host == "" {
 		return Config{}, fmt.Errorf("SSO_ISSUER must be an absolute URL")
+	}
+	if cfg.RateLimitEnabled && cfg.RedisAddr == "" {
+		return Config{}, fmt.Errorf("SSO_REDIS_ADDR is required when distributed rate limiting is enabled")
+	}
+	if cfg.RedisKeyPrefix == "" {
+		return Config{}, fmt.Errorf("SSO_REDIS_KEY_PREFIX must not be empty")
 	}
 
 	cfg.SessionTTL, err = time.ParseDuration(env("SSO_SESSION_TTL", "720h"))
@@ -111,6 +141,30 @@ func envList(name string) []string {
 		}
 	}
 	return values
+}
+
+func envInt(name string, fallback int) int {
+	value, ok := os.LookupEnv(name)
+	if !ok {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 1 {
+		return fallback
+	}
+	return parsed
+}
+
+func envNonNegativeInt(name string, fallback int) int {
+	value, ok := os.LookupEnv(name)
+	if !ok {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		return fallback
+	}
+	return parsed
 }
 
 func loadOrCreateMasterKey(path string, allowGenerate bool) ([]byte, error) {

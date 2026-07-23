@@ -56,7 +56,7 @@ function Turnstile(props: {
         "expired-callback": () => expireRef.current(),
       });
     };
-    const id = "identity-center-turnstile";
+    const id = "xem-sso-turnstile";
     const existing = document.getElementById(id) as HTMLScriptElement | null;
     if (window.turnstile) render();
     else if (existing) existing.addEventListener("load", render, { once: true });

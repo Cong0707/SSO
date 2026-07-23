@@ -14,10 +14,8 @@ import {
   ArrowLeft,
   ArrowRight,
   BadgeCheck,
-  Bell,
   Check,
   ChevronDown,
-  CircleHelp,
   Clipboard,
   Copy,
   Github,
@@ -27,11 +25,9 @@ import {
   LayoutDashboard,
   Link2,
   LogOut,
-  Menu,
   MessageCircle,
   Mail,
   Moon,
-  MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
@@ -53,11 +49,9 @@ import { BotProtectionChallenge, CaptchaConfig } from "./BotProtection";
 type User = {
   id: number;
   username: string;
-  email: string;
   display_name: string;
   avatar_url: string;
   locale: string;
-  email_verified: boolean;
   mfa_enabled: boolean;
   password_configured: boolean;
   security_email_enabled: boolean;
@@ -65,8 +59,6 @@ type User = {
   last_login_at?: string;
   role: "user" | "admin";
   status: "active" | "deactivated" | "merged";
-  emails?: UserEmail[];
-  identities?: IdentityBinding[];
   bindings?: UserBinding[];
 };
 type UserBinding = {
@@ -77,29 +69,9 @@ type UserBinding = {
   email?: string;
   binding_type: "email" | "upstream";
   binding_id: number;
-  original_user_id: number;
-  primary: boolean;
   verified: boolean;
-  disabled: boolean;
   created_at: string;
   last_login_at?: string;
-};
-type UserEmail = {
-  id: number;
-  email: string;
-  primary: boolean;
-  verified_at?: string;
-  disabled_at?: string;
-  original_user_id: number;
-};
-type IdentityBinding = {
-  id: number;
-  external_id: string;
-  external_name: string;
-  external_email: string;
-  original_user_id: number;
-  disabled_at?: string;
-  provider: Provider;
 };
 type AppRecord = {
   id: number;
@@ -143,9 +115,6 @@ const copy = {
     recent: "最近授权",
     appAccess: "应用接入",
     security: "安全状态总览",
-    language: "界面语言",
-    chinese: "中文",
-    english: "English",
     mfa: "二次验证（MFA）",
     sessions: "登录设备",
     pats: "个人访问令牌（PAT）",
@@ -160,7 +129,7 @@ const copy = {
     currentPassword: "当前密码",
     newPassword: "新密码",
     email: "邮箱",
-    username: "用户名 / 邮箱",
+    username: "用户名",
     description: "应用描述",
     homepage: "应用主页",
     callback: "回调地址",
@@ -181,76 +150,11 @@ const copy = {
     connect: "连接",
     connected: "已连接",
   },
-  en: {
-    dashboard: "Dashboard",
-    apps: "My apps",
-    authorizations: "Authorization logs",
-    grants: "Granted apps",
-    profile: "Profile",
-    signIn: "Sign in",
-    signUp: "Sign up",
-    logout: "Sign out",
-    welcome: "Welcome back",
-    noData: "No data",
-    create: "Create app",
-    save: "Save profile",
-    cancel: "Cancel",
-    confirm: "Confirm",
-    loading: "Loading…",
-    recent: "Recent authorization",
-    appAccess: "App access",
-    security: "Security overview",
-    language: "Language",
-    chinese: "中文",
-    english: "English",
-    mfa: "Two-factor authentication",
-    sessions: "Login devices",
-    pats: "Personal access tokens",
-    audit: "Security activity",
-    danger: "Danger zone",
-    providers: "Upstream providers",
-    devices: "Active devices",
-    authorized: "Authorized",
-    revoke: "Revoke",
-    delete: "Delete",
-    password: "Password",
-    currentPassword: "Current password",
-    newPassword: "New password",
-    email: "Email",
-    username: "Username / email",
-    description: "Description",
-    homepage: "Homepage",
-    callback: "Callback URL",
-    logo: "App icon",
-    appName: "Application name",
-    copySecret: "Copy secret",
-    copied: "Copied",
-    createToken: "Create token",
-    noTokens: "No tokens yet",
-    enableMFA: "Enable MFA",
-    disableMFA: "Disable MFA",
-    sendVerify: "Resend verification",
-    dangerDelete: "Delete account",
-    changePassword: "Change password",
-    allDevices: "Sign out other devices",
-    recentDevices: "Devices",
-    open: "Open",
-    connect: "Connect",
-    connected: "Connected",
-  },
 } as const;
 
-type Locale = keyof typeof copy;
 function useLocale() {
-  const [locale, setLocale] = useState<Locale>(
-    () => (localStorage.getItem("sso_locale") as Locale) || "zh",
-  );
-  const t = (key: keyof typeof copy.zh) => copy[locale][key];
-  const change = (next: Locale) => {
-    localStorage.setItem("sso_locale", next);
-    setLocale(next);
-  };
-  return { locale, t, change };
+  const t = (key: keyof typeof copy.zh) => copy.zh[key];
+  return { t };
 }
 
 export function App() {
@@ -288,7 +192,7 @@ export function App() {
   if (checking && !["/login", "/register"].includes(location.pathname))
     return (
       <div className="loading-screen">
-        <div className="brand-mark">ID</div>
+        <strong className="loading-brand">xem SSO</strong>
         <span>{i18n.t("loading")}</span>
       </div>
     );
@@ -299,7 +203,6 @@ export function App() {
           mode="login"
           onUser={setUser}
           t={i18n.t}
-          changeLocale={i18n.change}
           show={show}
         />
         <ToastView toast={toast} />
@@ -312,7 +215,6 @@ export function App() {
           mode="register"
           onUser={setUser}
           t={i18n.t}
-          changeLocale={i18n.change}
           show={show}
         />
         <ToastView toast={toast} />
@@ -343,8 +245,6 @@ export function App() {
         user={user}
         setUser={setUser}
         t={i18n.t}
-        locale={i18n.locale}
-        changeLocale={i18n.change}
         dark={dark}
         setDark={setDark}
         show={show}
@@ -361,8 +261,6 @@ function Shell(props: {
   user: User;
   setUser: (user: User | null) => void;
   t: T;
-  locale: Locale;
-  changeLocale: (locale: Locale) => void;
   dark: boolean;
   setDark: (value: boolean) => void;
   show: (message: string, tone?: Toast["tone"]) => void;
@@ -370,7 +268,6 @@ function Shell(props: {
 }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [mobile, setMobile] = useState(false);
   const [menu, setMenu] = useState(false);
   const items = [
     { path: "/dashboard", label: props.t("dashboard"), icon: LayoutDashboard },
@@ -402,19 +299,11 @@ function Shell(props: {
   }
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${mobile ? "mobile-open" : ""}`}>
+      <aside className="sidebar">
         <div className="sidebar-brand">
-          <span className="brand-mark">ID</span>
-          <span>Identity Center</span>
-          <button
-            className="icon-button mobile-close"
-            onClick={() => setMobile(false)}
-            aria-label="Close"
-          >
-            <X size={17} />
-          </button>
+          <span>xem SSO</span>
         </div>
-        <div className="workspace-label">ACCOUNT CENTER</div>
+        <div className="workspace-label">账号中心</div>
         <nav>
           {items.map((item) => {
             const Icon = item.icon;
@@ -423,7 +312,6 @@ function Shell(props: {
                 key={item.path}
                 to={item.path}
                 className={`nav-item ${location.pathname.startsWith(item.path) ? "active" : ""}`}
-                onClick={() => setMobile(false)}
               >
                 <Icon size={17} />
                 {item.label}
@@ -442,7 +330,6 @@ function Shell(props: {
                     key={item.path}
                     to={item.path}
                     className={`nav-item ${location.pathname.startsWith(item.path) ? "active" : ""}`}
-                    onClick={() => setMobile(false)}
                   >
                     <Icon size={17} />
                     {item.label}
@@ -452,49 +339,11 @@ function Shell(props: {
             </nav>
           </>
         )}
-        <div className="sidebar-bottom">
-          <button
-            className="nav-item"
-            onClick={() => props.setDark(!props.dark)}
-          >
-            <Moon size={17} />
-            {props.dark ? "Light mode" : "Dark mode"}
-          </button>
-          <button
-            className="nav-item"
-            onClick={() =>
-              props.changeLocale(props.locale === "zh" ? "en" : "zh")
-            }
-          >
-            <Languages size={17} />
-            {props.locale === "zh" ? "English" : "中文"}
-          </button>
-        </div>
       </aside>
-      <div className={`main-area ${mobile ? "drawer-visible" : ""}`}>
+      <div className="main-area">
         <header className="topbar">
-          <button
-            className="icon-button mobile-menu"
-            onClick={() => setMobile(true)}
-            aria-label="Menu"
-          >
-            <Menu size={20} />
-          </button>
-          <div className="breadcrumbs">
-            <span>Identity Center</span>
-            <ArrowRight size={14} />
-            <strong>
-              {allItems.find((item) => location.pathname.startsWith(item.path))
-                ?.label || props.t("dashboard")}
-            </strong>
-          </div>
+          <strong className="mobile-brand">xem SSO</strong>
           <div className="top-actions">
-            <button className="icon-button" title="Help">
-              <CircleHelp size={18} />
-            </button>
-            <button className="icon-button" title="Notifications">
-              <Bell size={18} />
-            </button>
             <div className="profile-menu">
               <button
                 className="profile-trigger"
@@ -510,6 +359,15 @@ function Shell(props: {
                     <Settings2 size={15} />
                     {props.t("profile")}
                   </Link>
+                  <button onClick={() => props.setDark(!props.dark)}>
+                    <Moon size={15} />
+                    {props.dark ? "浅色模式" : "深色模式"}
+                  </button>
+                  <div className="popover-static">
+                    <Languages size={15} />
+                    <span>语言</span>
+                    <strong>中文</strong>
+                  </div>
                   <button onClick={logout}>
                     <LogOut size={15} />
                     {props.t("logout")}
@@ -521,6 +379,21 @@ function Shell(props: {
         </header>
         <main className="page-content">{props.children}</main>
       </div>
+      <nav className="mobile-bottom-nav" aria-label="主导航">
+        {allItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={location.pathname.startsWith(item.path) ? "active" : ""}
+            >
+              <Icon size={17} />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }
@@ -579,7 +452,6 @@ function Avatar({
   );
 }
 function PageHeader(props: {
-  eyebrow?: string;
   title: string;
   description?: string;
   action?: ReactNode;
@@ -587,7 +459,6 @@ function PageHeader(props: {
   return (
     <div className="page-header">
       <div>
-        <div className="eyebrow">{props.eyebrow || "IDENTITY CENTER"}</div>
         <h1>{props.title}</h1>
         {props.description && <p>{props.description}</p>}
       </div>
@@ -737,7 +608,6 @@ function AuthPage(props: {
   mode: "login" | "register";
   onUser: (user: User) => void;
   t: T;
-  changeLocale: (locale: Locale) => void;
   show: (message: string, tone?: Toast["tone"]) => void;
 }) {
   const navigate = useNavigate();
@@ -745,11 +615,11 @@ function AuthPage(props: {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [flowMode, setFlowMode] = useState<"login" | "register" | null>(null);
   const [flowToken, setFlowToken] = useState("");
-  const [identifier, setIdentifier] = useState("");
+  const [email, setEmail] = useState("");
+  const [registrationUsername, setRegistrationUsername] = useState("");
   const [captchaToken, setCaptchaToken] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [debugCode, setDebugCode] = useState("");
   const [countdown, setCountdown] = useState(0);
@@ -785,8 +655,7 @@ function AuthPage(props: {
   const requestedReturnTo = params.get("redirect") || "/dashboard";
   const mergeToken = params.get("merge_token") || "";
   const visibleProviders = providers.filter(
-    (provider) =>
-      provider.enabled && provider.configured && provider.kind !== "telegram",
+    (provider) => provider.enabled && provider.configured,
   );
   async function identifyAccount(event: FormEvent) {
     event.preventDefault();
@@ -798,7 +667,7 @@ function AuthPage(props: {
       }>("/api/auth/identify", {
         method: "POST",
         body: JSON.stringify({
-          identifier,
+          email,
           captcha_token: captchaToken,
           merge_token: mergeToken,
         }),
@@ -826,7 +695,7 @@ function AuthPage(props: {
             flow_token: flowToken,
             password,
             confirm_password: confirmPassword,
-            email,
+            username: registrationUsername,
           }),
         });
         setDebugCode(data.debug_code || "");
@@ -904,6 +773,7 @@ function AuthPage(props: {
     setStep(1);
     setFlowMode(null);
     setFlowToken("");
+    setRegistrationUsername("");
     setPassword("");
     setConfirmPassword("");
     setCode("");
@@ -923,16 +793,10 @@ function AuthPage(props: {
   return (
     <div className="auth-layout">
       <div className="auth-brand">
-        <span className="brand-mark">ID</span>
-        <span>Identity Center</span>
-      </div>
-      <div className="auth-locale">
-        <button onClick={() => props.changeLocale("zh")}>中文</button>
-        <span>/</span>
-        <button onClick={() => props.changeLocale("en")}>English</button>
+        <span>xem SSO</span>
       </div>
       <div className="auth-card">
-        <div className="eyebrow">IDENTITY CENTER</div>
+        <div className="eyebrow">xem SSO</div>
         <div className="auth-steps" aria-label="认证进度">
           {[1, 2, 3].map((value) => (
             <span key={value} className={step >= value ? "active" : ""} />
@@ -941,16 +805,17 @@ function AuthPage(props: {
         <h1>{title}</h1>
         <p className="auth-lead">
           {mergeToken
-            ? "验证另一个账号后，资料和登录渠道会合并到编号较小的账号。"
+            ? "请使用另一个账号完成验证。"
             : "使用一个账号访问你的应用、授权和安全设置。"}
         </p>
         {step === 1 && (
           <form onSubmit={identifyAccount} className="form-stack">
             <Input
-              label="用户名或邮箱"
-              value={identifier}
-              onChange={(event) => setIdentifier(event.target.value)}
-              autoComplete="username"
+              label="邮箱"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              autoComplete="email"
               required
             />
             <BotProtectionChallenge
@@ -979,19 +844,19 @@ function AuthPage(props: {
           <form onSubmit={submitCredentials} className="form-stack">
             <input
               className="visually-hidden"
-              value={identifier}
-              autoComplete="username"
+              value={email}
+              autoComplete="email"
               readOnly
               tabIndex={-1}
               aria-hidden="true"
             />
             {flowMode === "register" && (
               <Input
-                label="邮箱"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                autoComplete="email"
+                label="用户名"
+                value={registrationUsername}
+                onChange={(event) => setRegistrationUsername(event.target.value)}
+                autoComplete="username"
+                hint="3-32 位字母、数字、下划线或连字符"
                 required
               />
             )}
@@ -1108,9 +973,6 @@ function AuthPage(props: {
                 ),
               )}
             </div>
-            <p className="provider-hint">
-              首次使用会自动创建账号并导入用户名、已验证邮箱和头像，之后可在个人资料中修改。
-            </p>
           </div>
         )}
         {!authConfig.registration_enabled && step === 1 && (
@@ -1118,7 +980,7 @@ function AuthPage(props: {
         )}
       </div>
       <div className="auth-footer">
-        Identity Center · OAuth 2.0 / OpenID Connect
+        xem SSO · OAuth 2.0 / OpenID Connect
       </div>
     </div>
   );
@@ -1126,7 +988,7 @@ function AuthPage(props: {
 
 declare global {
   interface Window {
-    IdentityCenterTelegramAuth?: (user: Record<string, unknown>) => void;
+    XemSSOTelegramAuth?: (user: Record<string, unknown>) => void;
   }
 }
 
@@ -1140,7 +1002,7 @@ function TelegramLoginButton(props: {
   useEffect(() => {
     const container = host.current;
     if (!container || !props.provider.bot_username) return;
-    window.IdentityCenterTelegramAuth = async (telegramUser) => {
+    window.XemSSOTelegramAuth = async (telegramUser) => {
       try {
         const data = await api<{ user: User; csrf_token: string }>(
           "/api/auth/telegram",
@@ -1167,11 +1029,11 @@ function TelegramLoginButton(props: {
     script.setAttribute("data-size", "large");
     script.setAttribute("data-radius", "6");
     script.setAttribute("data-request-access", "write");
-    script.setAttribute("data-onauth", "IdentityCenterTelegramAuth(user)");
+    script.setAttribute("data-onauth", "XemSSOTelegramAuth(user)");
     container.appendChild(script);
     return () => {
       script.remove();
-      delete window.IdentityCenterTelegramAuth;
+      delete window.XemSSOTelegramAuth;
     };
   }, [props.mergeToken, props.provider.bot_username]);
   return (
@@ -1221,7 +1083,7 @@ function DashboardPage({
     <>
       <PageHeader
         title={t("dashboard")}
-        description="统一身份中心，掌握应用接入与账号安全。"
+        description="管理应用接入与账号安全。"
         action={
           <Link className="button primary" to="/apps/new">
             <Plus size={16} />
@@ -1754,7 +1616,7 @@ function ConsentPage({
                 <h1>{data.app.name}</h1>
                 <p>
                   {data.app.description ||
-                    "此应用请求访问你的统一身份中心账号。"}
+                    "此应用请求访问你的 xem SSO 账号。"}
                 </p>
               </div>
             </div>
@@ -1874,7 +1736,7 @@ function ProfilePage({
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [patName, setPatName] = useState("");
   const [plainPAT, setPlainPAT] = useState("");
-  const [savedEmail, setSavedEmail] = useState(user.email);
+  const [newEmail, setNewEmail] = useState("");
   const [emailPassword, setEmailPassword] = useState("");
   const [emailFlow, setEmailFlow] = useState<{
     token: string;
@@ -1889,7 +1751,6 @@ function ProfilePage({
       .then((data) => {
         setProfile(data);
         setUser(data);
-        setSavedEmail(data.email);
       })
       .catch(() => undefined);
     api<typeof sessions>("/api/profile/sessions")
@@ -1913,31 +1774,40 @@ function ProfilePage({
     try {
       const data = await api<User>("/api/profile", {
         method: "PATCH",
-        body: JSON.stringify({ ...profile, email: savedEmail }),
+        body: JSON.stringify({
+          display_name: profile.display_name,
+          avatar_url: profile.avatar_url,
+          locale: profile.locale,
+          security_email_enabled: profile.security_email_enabled,
+        }),
       });
-      if (profile.email !== savedEmail) {
-        const verification = await api<{
-          flow_token: string;
-          debug_code?: string;
-        }>("/api/profile/emails/prepare", {
-          method: "POST",
-          body: JSON.stringify({
-            email: profile.email,
-            password: emailPassword,
-          }),
-        });
-        setEmailFlow({
-          token: verification.flow_token,
-          debugCode: verification.debug_code,
-        });
-        show("验证码已发送到新邮箱", "success");
-      } else {
-        setProfile({ ...profile, ...data });
-        setUser({ ...profile, ...data });
-        show("资料已保存", "success");
-      }
+      setProfile({ ...profile, ...data });
+      setUser({ ...profile, ...data });
+      show("资料已保存", "success");
     } catch (error) {
       show(error instanceof Error ? error.message : "保存失败", "error");
+    }
+  }
+  async function prepareEmailBinding(event: FormEvent) {
+    event.preventDefault();
+    try {
+      const verification = await api<{
+        flow_token: string;
+        debug_code?: string;
+      }>("/api/profile/emails/prepare", {
+        method: "POST",
+        body: JSON.stringify({
+          email: newEmail,
+          password: emailPassword,
+        }),
+      });
+      setEmailFlow({
+        token: verification.flow_token,
+        debugCode: verification.debug_code,
+      });
+      show("验证码已发送", "success");
+    } catch (error) {
+      show(error instanceof Error ? error.message : "发送失败", "error");
     }
   }
   async function completeEmailChange() {
@@ -1953,8 +1823,9 @@ function ProfilePage({
       setEmailFlow(null);
       setEmailCode("");
       setEmailPassword("");
+      setNewEmail("");
       setModal(null);
-      show("新邮箱已验证并设为主邮箱", "success");
+      show("邮箱已绑定", "success");
       load();
     } catch (error) {
       show(error instanceof Error ? error.message : "邮箱验证失败", "error");
@@ -2086,9 +1957,23 @@ function ProfilePage({
       event.target.value = "";
     }
   }
+  async function unlinkBinding(binding: UserBinding) {
+    if (!window.confirm(`确认解绑 ${binding.display_name} ${binding.identifier}？`))
+      return;
+    try {
+      await api(
+        `/api/profile/bindings/${binding.binding_type}/${binding.binding_id}`,
+        { method: "DELETE" },
+      );
+      show("账号已解绑", "success");
+      load();
+    } catch (error) {
+      show(error instanceof Error ? error.message : "解绑失败", "error");
+    }
+  }
   async function deleteAccount(event: FormEvent) {
     event.preventDefault();
-    if (!window.confirm("确认注销账户？账号记录会永久保留，但将无法登录。"))
+    if (!window.confirm("确认注销账户？注销后将无法继续登录。"))
       return;
     try {
       await api("/api/profile", {
@@ -2102,7 +1987,7 @@ function ProfilePage({
   }
   async function startMerge(event: FormEvent) {
     event.preventDefault();
-    if (!window.confirm("继续后需要登录另一个账号。合并完成后不能自动拆分。"))
+    if (!window.confirm("账号合并完成后不可撤销，是否继续？"))
       return;
     try {
       const data = await api<{ login_url: string }>(
@@ -2138,7 +2023,7 @@ function ProfilePage({
             <Avatar user={profile} small />
             <div>
               <strong>{profile.display_name || profile.username}</strong>
-              <span>{profile.email}</span>
+              <span>@{profile.username}</span>
             </div>
           </div>
           {profileNavigation.map((item) => {
@@ -2198,18 +2083,6 @@ function ProfilePage({
                     })
                   }
                 />
-                <div className="setting-action-row">
-                  <div>
-                    <strong>主邮箱</strong>
-                    <span>
-                      {profile.email} ·{" "}
-                      {profile.email_verified ? "已验证" : "未验证"}
-                    </span>
-                  </div>
-                  <Button variant="secondary" onClick={() => setModal("email")}>
-                    更换邮箱
-                  </Button>
-                </div>
                 <Input
                   label="头像 URL"
                   value={profile.avatar_url}
@@ -2217,16 +2090,6 @@ function ProfilePage({
                     setProfile({ ...profile, avatar_url: event.target.value })
                   }
                 />
-                <Select
-                  label={t("language")}
-                  value={profile.locale}
-                  onChange={(event) =>
-                    setProfile({ ...profile, locale: event.target.value })
-                  }
-                >
-                  <option value="zh-CN">{t("chinese")}</option>
-                  <option value="en">{t("english")}</option>
-                </Select>
                 <label className="setting-toggle">
                   <div>
                     <strong>接收安全邮件</strong>
@@ -2298,19 +2161,6 @@ function ProfilePage({
                       启用
                     </Button>
                   )}
-                </div>
-                <div className="setting-action-row">
-                  <div>
-                    <strong>邮箱验证</strong>
-                    <span>
-                      {profile.email_verified
-                        ? `${profile.email} 已验证`
-                        : "当前邮箱尚未验证"}
-                    </span>
-                  </div>
-                  <Badge tone={profile.email_verified ? "success" : "warning"}>
-                    {profile.email_verified ? "良好" : "待完善"}
-                  </Badge>
                 </div>
               </div>
             </>
@@ -2409,8 +2259,14 @@ function ProfilePage({
               <div className="section-heading">
                 <div>
                   <h2>账号绑定</h2>
-                  <p>邮箱和第三方身份使用同一套绑定记录。</p>
                 </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => setModal("email")}
+                  icon={<Mail size={15} />}
+                >
+                  绑定邮箱
+                </Button>
               </div>
               <div className="binding-list unified">
                 {profile.bindings?.map((binding) => (
@@ -2424,23 +2280,29 @@ function ProfilePage({
                         {binding.display_name} <code>{binding.identifier}</code>
                       </strong>
                       <span>
-                        {binding.account_name || binding.email || "已验证身份"}{" "}
-                        · 来源账号 #{binding.original_user_id}
+                        {binding.account_name || binding.email || "已验证"}
                       </span>
                     </div>
                     <div className="binding-badges">
-                      {binding.primary && <Badge tone="success">主绑定</Badge>}
                       <Badge tone={binding.verified ? "success" : "warning"}>
                         {binding.verified ? "已验证" : "未验证"}
                       </Badge>
+                      <button
+                        type="button"
+                        className="icon-button danger-icon"
+                        onClick={() => unlinkBinding(binding)}
+                        title="解绑"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </div>
                 ))}
+                {!profile.bindings?.length && <Empty text="暂无账号绑定" />}
               </div>
               <div className="section-heading binding-connect-heading">
                 <div>
-                  <h2>连接登录方式</h2>
-                  <p>只有管理员已完整配置的登录方式会在这里出现。</p>
+                  <h2>添加第三方账号</h2>
                 </div>
               </div>
               <div className="settings-list">
@@ -2509,9 +2371,7 @@ function ProfilePage({
                 <div className="setting-action-row">
                   <div>
                     <strong>合并账号</strong>
-                    <span>
-                      验证另一个账号后，绑定信息将合并到编号较小的账号。
-                    </span>
+                    <span>将另一个账号与当前账号合并。</span>
                   </div>
                   <Button
                     variant="secondary"
@@ -2524,7 +2384,7 @@ function ProfilePage({
                 <div className="setting-action-row">
                   <div>
                     <strong>注销账户</strong>
-                    <span>账号和审计数据永久保留，但账号将无法登录。</span>
+                    <span>注销后将无法继续登录。</span>
                   </div>
                   <Button
                     variant="danger"
@@ -2596,23 +2456,24 @@ function ProfilePage({
       </Modal>
       <Modal
         open={modal === "email"}
-        title="更换邮箱"
-        description="新邮箱验证成功后会成为主邮箱，旧邮箱仍作为绑定记录保留。"
+        title="绑定邮箱"
+        description="验证码将发送到新邮箱。"
         onClose={() => {
           setModal(null);
-          setProfile({ ...profile, email: savedEmail });
+          setNewEmail("");
+          setEmailPassword("");
+          setEmailCode("");
           setEmailFlow(null);
         }}
       >
         {!emailFlow ? (
-          <form onSubmit={saveProfile} className="form-stack">
+          <form onSubmit={prepareEmailBinding} className="form-stack">
             <Input
-              label="新邮箱"
+              label="邮箱"
               type="email"
-              value={profile.email}
-              onChange={(event) =>
-                setProfile({ ...profile, email: event.target.value })
-              }
+              value={newEmail}
+              onChange={(event) => setNewEmail(event.target.value)}
+              autoComplete="email"
               required
             />
             {profile.password_configured && (
@@ -2810,7 +2671,7 @@ function ProfilePage({
       <Modal
         open={modal === "merge"}
         title="合并账号"
-        description="继续后将打开登录流程，用另一个账号完成验证。"
+        description="账号合并完成后不可撤销。"
         onClose={() => setModal(null)}
       >
         <form onSubmit={startMerge} className="form-stack">
@@ -2823,9 +2684,6 @@ function ProfilePage({
               required
             />
           )}
-          <div className="notice warning">
-            合并后，绑定会叠加到编号较小的账号；原账号永久保留供审计。
-          </div>
           <div className="modal-form-actions">
             <Button variant="secondary" onClick={() => setModal(null)}>
               取消
@@ -2837,7 +2695,7 @@ function ProfilePage({
       <Modal
         open={modal === "delete"}
         title="注销账户"
-        description="账号记录不会物理删除，但注销后无法继续登录。"
+        description="注销后将无法继续登录。"
         onClose={() => setModal(null)}
       >
         <form onSubmit={deleteAccount} className="form-stack">
@@ -2869,7 +2727,6 @@ type AdminUser = User & {
   binding_count: number;
   deactivated_at?: string;
   merged_into_user_id?: number;
-  merge_sources?: AdminUser[];
   password?: string;
 };
 
@@ -2924,7 +2781,6 @@ function AdminUsersPage({
       setSelected({
         ...data,
         bindings: data.bindings || [],
-        merge_sources: data.merge_sources || [],
         password: "",
       });
     } catch (error) {
@@ -2952,23 +2808,19 @@ function AdminUsersPage({
       show(error instanceof Error ? error.message : "保存失败", "error");
     }
   }
-  async function disableBinding(binding: UserBinding) {
-    if (
-      !window.confirm(
-        `确认禁用 ${binding.display_name} ${binding.identifier}？记录仍会保留用于审计。`,
-      )
-    )
+  async function deleteBinding(binding: UserBinding) {
+    if (!window.confirm(`确认解绑 ${binding.display_name} ${binding.identifier}？`))
       return;
     try {
       await api(
         `/api/admin/bindings/${binding.binding_type}/${binding.binding_id}`,
         { method: "DELETE" },
       );
-      show("绑定已禁用", "success");
+      show("绑定已删除", "success");
       if (selected) await openUser(selected.id);
       await loadUsers();
     } catch (error) {
-      show(error instanceof Error ? error.message : "禁用失败", "error");
+      show(error instanceof Error ? error.message : "删除失败", "error");
     }
   }
   async function resetMFA() {
@@ -3166,13 +3018,6 @@ function AdminUsersPage({
                       >
                         <Pencil size={15} />
                       </button>
-                      <button
-                        className="icon-button"
-                        onClick={() => openUser(item.id)}
-                        title="更多操作"
-                      >
-                        <MoreHorizontal size={16} />
-                      </button>
                     </div>
                   </td>
                 </tr>
@@ -3316,12 +3161,6 @@ function AdminUsersPage({
                     <option value="merged">已合并</option>
                   </Select>
                 </div>
-                {selected.merged_into_user_id && (
-                  <div className="notice">
-                    该原账号已合并到用户 #{selected.merged_into_user_id}
-                    ，仅保留用于审计。
-                  </div>
-                )}
                 <div className="setting-action-row compact">
                   <div>
                     <strong>二次验证</strong>
@@ -3335,14 +3174,11 @@ function AdminUsersPage({
                 </div>
               </section>
               <section className="drawer-section">
-                <h3>绑定信息</h3>
-                <p className="drawer-section-description">
-                  邮箱与第三方账号使用统一绑定模型；禁用后记录仍保留用于审计。
-                </p>
+                <h3>账号绑定</h3>
                 <div className="binding-list unified">
                   {selected.bindings?.map((binding) => (
                     <div
-                      className={`binding-record ${binding.disabled ? "disabled" : ""}`}
+                      className="binding-record"
                       key={`${binding.binding_type}-${binding.binding_id}`}
                     >
                       <ProviderIcon kind={binding.kind} />
@@ -3356,40 +3192,19 @@ function AdminUsersPage({
                             .filter(Boolean)
                             .join(" · ") || "—"}
                         </span>
-                        <small>
-                          来源账号 #{binding.original_user_id} · 绑定 #
-                          {binding.binding_id}
-                        </small>
                       </div>
                       <div className="binding-badges">
-                        {binding.primary && (
-                          <Badge tone="success">主绑定</Badge>
-                        )}
-                        <Badge
-                          tone={
-                            binding.disabled
-                              ? "muted"
-                              : binding.verified
-                                ? "success"
-                                : "warning"
-                          }
-                        >
-                          {binding.disabled
-                            ? "已禁用"
-                            : binding.verified
-                              ? "已验证"
-                              : "未验证"}
+                        <Badge tone={binding.verified ? "success" : "warning"}>
+                          {binding.verified ? "已验证" : "未验证"}
                         </Badge>
-                        {!binding.disabled && (
-                          <button
-                            type="button"
-                            className="icon-button danger-icon"
-                            onClick={() => disableBinding(binding)}
-                            title="禁用绑定"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          className="icon-button danger-icon"
+                          onClick={() => deleteBinding(binding)}
+                          title="解绑"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -3398,18 +3213,6 @@ function AdminUsersPage({
                   )}
                 </div>
               </section>
-              {(selected.merge_sources?.length || 0) > 0 && (
-                <section className="drawer-section">
-                  <h3>合并来源</h3>
-                  {selected.merge_sources?.map((source) => (
-                    <div className="merge-source" key={source.id}>
-                      <code>#{source.id}</code>
-                      <span>{source.username}</span>
-                      <Badge tone="muted">已合并</Badge>
-                    </div>
-                  ))}
-                </section>
-              )}
             </form>
             <footer className="side-drawer-footer">
               <Button variant="secondary" onClick={() => setSelected(null)}>
@@ -3570,17 +3373,27 @@ function AdminSettingsPage({
       </div>
     );
   const provider = providers[providerIndex];
-  const nav = [
-    { id: "basic", label: "基本身份验证", icon: KeyRound },
-    { id: "email", label: "邮件服务", icon: Send },
-    { id: "oauth", label: "OAuth 集成", icon: Link2 },
-    { id: "bot", label: "机器人保护", icon: ShieldCheck },
+  const navGroups = [
+    {
+      label: "身份验证",
+      items: [
+        { id: "basic", label: "基本身份验证", icon: KeyRound },
+        { id: "bot", label: "机器人保护", icon: ShieldCheck },
+      ],
+    },
+    {
+      label: "第三方服务",
+      items: [
+        { id: "email", label: "邮件服务", icon: Send },
+        { id: "oauth", label: "OAuth 集成", icon: Link2 },
+      ],
+    },
   ] as const;
   return (
     <>
       <PageHeader
         title="系统设置"
-        description="按 new-api 的管理结构配置身份认证服务。未启用或未完整配置的登录方式不会展示给客户。"
+        description="配置身份验证与第三方服务。"
       />
       {settings.email_debug && (
         <div className="notice warning settings-debug-notice">
@@ -3590,27 +3403,25 @@ function AdminSettingsPage({
       )}
       <div className="system-settings-layout">
         <aside className="system-settings-nav">
-          <div className="settings-back">
-            <ArrowLeft size={14} />
-            返回控制台
-          </div>
-          <div className="settings-nav-group">
-            <span>身份验证</span>
-            {nav.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  className={active === item.id ? "active" : ""}
-                  onClick={() => setActive(item.id)}
-                >
-                  <Icon size={16} />
-                  {item.label}
-                  <ArrowRight size={14} />
-                </button>
-              );
-            })}
-          </div>
+          {navGroups.map((group) => (
+            <div className="settings-nav-group" key={group.label}>
+              <span>{group.label}</span>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    className={active === item.id ? "active" : ""}
+                    onClick={() => setActive(item.id)}
+                  >
+                    <Icon size={16} />
+                    {item.label}
+                    <ArrowRight size={14} />
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </aside>
         <section className="system-settings-content">
           {active === "basic" && (
@@ -3618,7 +3429,7 @@ function AdminSettingsPage({
               <div className="section-heading">
                 <div>
                   <h2>基本身份验证</h2>
-                  <p>控制本地用户名、密码和注册流程。</p>
+                  <p>控制邮箱、密码和注册流程。</p>
                 </div>
               </div>
               <div className="settings-form-body">
@@ -3651,7 +3462,7 @@ function AdminSettingsPage({
                   <div>
                     <strong>账号识别</strong>
                     <span>
-                      第一页支持用户名或邮箱；登录和注册在识别后分流。
+                      第一页使用邮箱识别账号；新用户在下一页设置用户名和密码。
                     </span>
                   </div>
                   <Badge tone="success">已启用</Badge>
@@ -3669,7 +3480,7 @@ function AdminSettingsPage({
               <div className="section-heading">
                 <div>
                   <h2>邮件服务</h2>
-                  <p>用于注册、换绑邮箱和安全提醒。</p>
+                  <p>用于注册、绑定邮箱和安全提醒。</p>
                 </div>
               </div>
               <div className="settings-form-body">
@@ -3779,7 +3590,7 @@ function AdminSettingsPage({
                 >
                   <option value="none">无</option>
                   <option value="turnstile">Cloudflare Turnstile</option>
-                  <option value="cap">Cap Proof of Work</option>
+                  <option value="cap">PoW</option>
                 </Select>
                 {settings.captcha_mode === "turnstile" && (
                   <div className="form-grid-2">
@@ -3815,7 +3626,7 @@ function AdminSettingsPage({
                 {settings.captcha_mode === "cap" && (
                   <div className="form-grid-2">
                     <Input
-                      label="Cap 服务地址"
+                      label="PoW 服务地址"
                       value={settings.cap_server_url}
                       onChange={(event) =>
                         setSettings({

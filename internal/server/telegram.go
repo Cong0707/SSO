@@ -28,6 +28,9 @@ func (s *Server) telegramLogin(c *gin.Context) {
 		s.serveError(c, http.StatusBadRequest, "Telegram 登录数据无效")
 		return
 	}
+	if !s.enforceRateLimitPair(c, "telegram_login", fmt.Sprintf("telegram:%d", input.ID), s.Cfg.RateLimitLogin, 5*time.Minute) {
+		return
+	}
 	var provider model.UpstreamProvider
 	if err := s.DB.Where("kind = ? AND enabled = ?", "telegram", true).First(&provider).Error; err != nil || !providerConfigured(provider) {
 		s.serveError(c, http.StatusNotFound, "Telegram 未配置")
@@ -88,9 +91,6 @@ func (s *Server) telegramLogin(c *gin.Context) {
 func (s *Server) resolveUpstreamUser(provider model.UpstreamProvider, identity upstream.Identity) (model.User, error) {
 	var relation model.UpstreamIdentity
 	if err := s.DB.Where("provider_id = ? AND external_id = ?", provider.ID, identity.Subject).First(&relation).Error; err == nil {
-		if relation.DisabledAt != nil {
-			return model.User{}, fmt.Errorf("该 Telegram 登录绑定已被管理员禁用")
-		}
 		var user model.User
 		if userErr := s.DB.First(&user, relation.UserID).Error; userErr != nil {
 			return model.User{}, userErr
@@ -101,7 +101,7 @@ func (s *Server) resolveUpstreamUser(provider model.UpstreamProvider, identity u
 	if err != nil {
 		return model.User{}, err
 	}
-	if err := s.DB.Create(&model.UpstreamIdentity{UserID: user.ID, OriginalUserID: user.ID, ProviderID: provider.ID, ExternalID: identity.Subject, ExternalName: identity.Name, ExternalEmail: identity.Email, LastLoginAt: time.Now()}).Error; err != nil {
+	if err := s.DB.Create(&model.UpstreamIdentity{UserID: user.ID, ProviderID: provider.ID, ExternalID: identity.Subject, ExternalName: identity.Name, ExternalEmail: identity.Email, LastLoginAt: time.Now()}).Error; err != nil {
 		return model.User{}, err
 	}
 	return user, nil
