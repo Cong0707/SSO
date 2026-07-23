@@ -22,7 +22,7 @@ import (
 
 func TestProvisionUpstreamUserImportsProfileAndAllowsLaterUserEdits(t *testing.T) {
 	db := openTestDatabase(t)
-	application := &Server{DB: db, Cfg: config.Config{BootstrapAdminEmails: []string{"octocat@example.com"}}}
+	application := &Server{DB: db, Cfg: config.Config{RegistrationEnabled: true, BootstrapAdminEmails: []string{"octocat@example.com"}}}
 	provider := model.UpstreamProvider{Kind: "github"}
 	identity := upstream.Identity{
 		Subject: "42", Username: "octocat", Name: "The Octocat", Email: "octocat@example.com",
@@ -68,7 +68,7 @@ func TestProvisionUpstreamUserImportsProfileAndAllowsLaterUserEdits(t *testing.T
 
 func TestSyncUpstreamProfileAddsVerifiedEmailBinding(t *testing.T) {
 	db := openTestDatabase(t)
-	application := &Server{DB: db}
+	application := &Server{DB: db, Cfg: config.Config{RegistrationEnabled: true}}
 	provider := model.UpstreamProvider{Kind: "discord"}
 	user, err := application.provisionUpstreamUser(provider, upstream.Identity{Subject: "100", Username: "user100"})
 	if err != nil {

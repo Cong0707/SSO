@@ -295,6 +295,9 @@ func (s *Server) adminResetMFA(c *gin.Context) {
 		return
 	}
 	err = s.DB.Transaction(func(tx *gorm.DB) error {
+		if deleteErr := tx.Where("user_id = ?", user.ID).Delete(&model.MFABackupCode{}).Error; deleteErr != nil {
+			return deleteErr
+		}
 		if updateErr := tx.Model(&user).Updates(map[string]any{"mfa_enabled": false, "mfa_secret_encrypted": "", "mfa_backup_code_hashes": "[]"}).Error; updateErr != nil {
 			return updateErr
 		}

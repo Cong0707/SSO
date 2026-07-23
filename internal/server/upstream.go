@@ -135,6 +135,9 @@ func (s *Server) listProviders(c *gin.Context) {
 
 func (s *Server) upstreamStart(c *gin.Context) {
 	kind := strings.ToLower(c.Param("kind"))
+	if !s.enforceRateLimit(c, "upstream_start:ip", clientIP(c), s.Cfg.RateLimitIdentify, time.Minute) {
+		return
+	}
 	var providerRecord model.UpstreamProvider
 	if err := s.DB.Where("kind = ? AND enabled = ?", kind, true).First(&providerRecord).Error; err != nil {
 		s.serveError(c, http.StatusNotFound, "该登录方式未配置")
@@ -364,6 +367,9 @@ func providerConfigured(provider model.UpstreamProvider) bool {
 }
 
 func (s *Server) provisionUpstreamUser(provider model.UpstreamProvider, identity upstream.Identity, preferredLocale ...string) (model.User, error) {
+	if !s.settingBool(settingRegistrationEnabled, s.Cfg.RegistrationEnabled) {
+		return model.User{}, errors.New("注册已关闭")
+	}
 	usernameSource := identity.Username
 	if usernameSource == "" {
 		usernameSource = identity.Name

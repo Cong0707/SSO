@@ -1,6 +1,6 @@
 # new-api 身份迁移运行手册
 
-这份文档描述上线前的身份迁移。new-api 的业务用户表、原始 `id`、角色、额度、分组、支付、订阅、工单、日志和业务 Token 不迁入 SSO，也不会被删除或改写。SSO 只接管登录身份、邮箱、第三方绑定、资料、MFA 和全局账号状态。
+这份文档描述上线前的身份迁移。new-api 的基础账号系统仍然存在，但会被简化为业务用户投影和本地会话承载层；new-api 的业务用户表、原始 `id`、角色、额度、分组、支付、订阅、工单、日志和业务 Token 不迁入 SSO，也不会被删除或改写。SSO 只接管登录身份、邮箱、第三方绑定、资料、MFA 和全局账号状态。
 
 ## 权威边界
 
@@ -12,6 +12,8 @@
 | new-api 用户主键、角色 1/10/100、分组、额度、钱包、订阅、支付、业务 Token | new-api |
 
 new-api 应增加 `sso_subject` 唯一映射，但不能用 SSO ID 替换现有业务 `users.id`。合并账号通过 SSO 生命周期事件中的 `sub` 与 `canonical_sub` 处理，不能重写历史业务外键。
+
+new-api 接入 SSO 后仍负责建立自己的业务 Session、权限判断、额度扣费和业务审计。邮箱、头像、显示名等资料可以从 OIDC claims 或 UserInfo 获取并做短期缓存，但权威修改入口应跳转到 SSO 的个人信息管理页。
 
 ## 字段处理
 
@@ -83,7 +85,7 @@ go run ./cmd/migrate-new-api -mode rollback -batch <批次ID>
 ## 切换与回滚
 
 1. 备份 new-api 和 SSO，记录快照水位与迁移批次 ID。
-2. 关闭 new-api 注册、密码修改、邮箱/第三方绑定和账号合并入口。
+2. 关闭 new-api 本地密码注册/登录、密码修改、邮箱/第三方绑定和账号合并入口；保留业务用户表、本地 Session、权限、额度和支付链路。
 3. 执行最终 dry-run、import、verify，确认没有错误冲突。
 4. new-api 后端使用 OIDC Authorization Code + S256 PKCE；以稳定 `sub` 查找原有业务用户并建立本地 Session。
 5. SSO 的停用、合并和角色变化通过 outbox webhook 消费；消费方按 `event_id` 幂等，失败进入重试/死信。

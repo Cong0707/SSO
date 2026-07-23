@@ -343,8 +343,8 @@ func (r *Runner) validate(users []SourceUser) []Issue {
 			}
 		}
 		identities := r.identities(user)
-		if email == "" && len(identities) == 0 {
-			issues = append(issues, Issue{user.ID, "error", "no_login_identity", "source user has neither email nor supported third-party identity"})
+		if len(identities) == 0 && (email == "" || strings.TrimSpace(user.Password) == "") {
+			issues = append(issues, Issue{user.ID, "error", "no_login_identity", "source user needs both email and password, or at least one supported third-party identity"})
 		}
 		if user.Password != "" {
 			if _, err := bcrypt.Cost([]byte(user.Password)); err != nil {

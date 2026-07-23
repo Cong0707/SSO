@@ -126,3 +126,43 @@ func TestDryRunBlocksBothSidesOfDuplicateEmail(t *testing.T) {
 		t.Fatalf("duplicate email did not block both source users: %#v", result.Issues)
 	}
 }
+
+func TestDryRunRejectsPasswordlessEmailOnlyUser(t *testing.T) {
+	temp := t.TempDir()
+	sourcePath := filepath.Join(temp, "source.db")
+	source, err := gorm.Open(sqlite.Open(sourcePath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceSQL, _ := source.DB()
+	t.Cleanup(func() { _ = sourceSQL.Close() })
+	if err := source.Table("users").AutoMigrate(&SourceUser{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Table("users").Create(&SourceUser{ID: 1, Username: "locked-user", Email: "locked@example.com", Status: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	targetCfg := config.Config{DatabaseDriver: "sqlite", DatabaseDSN: filepath.Join(temp, "target.db")}
+	target, err := model.Open(targetCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetSQL, _ := target.DB()
+	t.Cleanup(func() { _ = targetSQL.Close() })
+	runner, err := New(target, targetCfg, Options{SourceDriver: "sqlite", SourceDSN: sourcePath, Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runnerSourceSQL, _ := runner.Source.DB()
+	t.Cleanup(func() { _ = runnerSourceSQL.Close() })
+	result, err := runner.DryRun()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, issue := range result.Issues {
+		if issue.SourceUserID == 1 && issue.Kind == "no_login_identity" && issue.Severity == "error" {
+			return
+		}
+	}
+	t.Fatalf("passwordless email-only user was not blocked: %#v", result.Issues)
+}

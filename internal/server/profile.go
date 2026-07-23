@@ -237,6 +237,10 @@ func (s *Server) changePassword(c *gin.Context) {
 
 func (s *Server) setupMFA(c *gin.Context) {
 	user := s.user(c)
+	if user.MFAEnabled {
+		s.serveError(c, http.StatusConflict, "请先验证并停用当前 MFA，再重新设置")
+		return
+	}
 	key, err := totp.Generate(totp.GenerateOpts{Issuer: "xem SSO", AccountName: user.Username})
 	if err != nil {
 		s.serveError(c, http.StatusInternalServerError, "生成 MFA 密钥失败")

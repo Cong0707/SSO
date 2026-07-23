@@ -145,7 +145,7 @@ func (s *Server) Close() error {
 func (s *Server) Router() *gin.Engine {
 	router := gin.New()
 	_ = router.SetTrustedProxies(s.Cfg.TrustedProxies)
-	router.Use(gin.Logger(), gin.Recovery(), s.requestContext)
+	router.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipQueryString: true}), gin.Recovery(), s.requestContext)
 	router.GET("/livez", s.liveness)
 	router.GET("/readyz", s.readiness)
 	router.GET("/healthz", s.readiness)

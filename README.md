@@ -13,7 +13,7 @@ xem SSO 是面向自有服务的用户管理与 OAuth 2.0 / OpenID Connect 服�
 - OAuth 授权码、强制 PKCE、刷新令牌、撤销、授权同意页、授权日志和已授权应用管理。
 - OIDC Discovery、JWKS、`id_token`、`userinfo` 和标准 Bearer PAT API 认证。
 - GitHub、Discord、LinuxDO、通用 OIDC、微信的统一上游 Provider 接口；Telegram Login Widget 使用独立签名校验接口。
-- 第三方首次登录自动注册并导入用户名、显示名、已验证邮箱和头像；不会仅凭相同邮箱静默合并账号。一个账号允许绑定多个邮箱和同一 Provider 的多个外部身份。
+- 注册开启时，第三方首次登录可自动注册并导入用户名、显示名、已验证邮箱和头像；注册关闭时，未知第三方身份不能创建新账号。系统不会仅凭相同邮箱静默合并账号，一个账号允许绑定多个邮箱和同一 Provider 的多个外部身份。
 - 管理员侧栏包含“用户管理”和“系统设置”：可查看正常、注销和已合并账号，管理所有渠道绑定，配置 SMTP、`none / turnstile / cap` 人机验证，以及全部上游 Provider。
 - PostgreSQL 是默认数据库，OAuth 授权码、访问令牌和刷新令牌也持久化在 GORM 数据库中；SQLite 仅用于本地演示和测试。
 - 邀请码/邀请系统已移除，注册不再依赖邀请码。
@@ -145,3 +145,5 @@ type Provider interface {
 ## new-api 迁移
 
 字段映射、密码兼容策略、第三方身份绑定和迁移顺序见 [`docs/new-api-migration.md`](docs/new-api-migration.md)。当前登录器兼容 new-api 使用的 bcrypt 哈希，用户首次登录成功后会自动升级为 Argon2id。
+
+迁移边界是身份接管，不是业务用户表替换。new-api 仍保留本地用户 ID、角色、分组、额度、钱包、订阅、支付、API Token、日志和业务 Session；SSO 接管密码、邮箱、第三方绑定、头像、MFA、账号合并和全局身份状态。new-api 应通过 OIDC `sub` 建立本地业务用户映射，并把个人信息管理入口跳转到 SSO。

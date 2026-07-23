@@ -44,6 +44,7 @@ func (s *Server) mergeAccounts(firstID, secondID uint64) (model.User, bool, erro
 			return errors.New("只有正常状态的账号可以合并")
 		}
 		updates := map[string]any{}
+		adoptSourceMFA := !target.MFAEnabled && source.MFAEnabled
 		if strings.TrimSpace(target.DisplayName) == "" && strings.TrimSpace(source.DisplayName) != "" {
 			updates["display_name"] = source.DisplayName
 		}
@@ -54,7 +55,7 @@ func (s *Server) mergeAccounts(firstID, secondID uint64) (model.User, bool, erro
 			updates["password_hash"] = source.PasswordHash
 			updates["password_configured"] = true
 		}
-		if !target.MFAEnabled && source.MFAEnabled {
+		if adoptSourceMFA {
 			updates["mfa_enabled"] = true
 			updates["mfa_secret_encrypted"] = source.MFASecretEncrypted
 			updates["mfa_backup_code_hashes"] = source.MFABackupCodeHashes
@@ -66,6 +67,16 @@ func (s *Server) mergeAccounts(firstID, secondID uint64) (model.User, bool, erro
 			if err := tx.Model(&target).Updates(updates).Error; err != nil {
 				return err
 			}
+		}
+		if adoptSourceMFA {
+			if err := tx.Where("user_id = ?", targetID).Delete(&model.MFABackupCode{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&model.MFABackupCode{}).Where("user_id = ?", sourceID).Update("user_id", targetID).Error; err != nil {
+				return err
+			}
+		} else if err := tx.Where("user_id = ?", sourceID).Delete(&model.MFABackupCode{}).Error; err != nil {
+			return err
 		}
 		if err := tx.Model(&model.UserEmail{}).Where("user_id = ?", sourceID).Update("user_id", targetID).Error; err != nil {
 			return fmt.Errorf("合并邮箱失败: %w", err)

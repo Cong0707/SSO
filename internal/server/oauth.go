@@ -216,6 +216,10 @@ func (s *Server) oauthToken(c *gin.Context) {
 	if !s.enforceRateLimitPair(c, "oauth_token", clientID, s.Cfg.RateLimitOAuthToken, time.Minute) {
 		return
 	}
+	if err := c.Request.ParseForm(); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+		return
+	}
 	if c.Request.Form.Get("grant_type") == "refresh_token" {
 		refreshToken := c.Request.Form.Get("refresh_token")
 		store, ok := s.Tokens.(*databaseTokenStore)
@@ -267,6 +271,10 @@ func (s *Server) oauthIntrospect(c *gin.Context) {
 	if info.GetAccess() != raw {
 		expiresAt = info.GetRefreshCreateAt().Add(info.GetRefreshExpiresIn())
 	}
+	if !expiresAt.After(time.Now()) {
+		c.JSON(http.StatusOK, gin.H{"active": false})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"active": true, "client_id": info.GetClientID(), "sub": info.GetUserID(),
 		"scope": info.GetScope(), "exp": expiresAt.Unix(), "token_type": "Bearer",
@@ -284,6 +292,10 @@ func (s *Server) oauthRevoke(c *gin.Context) {
 	if err != nil || !client.(clientInfo).VerifyPassword(clientSecret) {
 		c.Header("WWW-Authenticate", `Basic realm="oauth/revoke"`)
 		c.Status(http.StatusUnauthorized)
+		return
+	}
+	if err := c.Request.ParseForm(); err != nil {
+		c.Status(http.StatusBadRequest)
 		return
 	}
 	token := c.Request.Form.Get("token")
@@ -419,7 +431,7 @@ func (s *Server) emailClaims(userID uint64) map[string]interface{} {
 	var emails []string
 	_ = s.DB.Model(&model.UserEmail{}).Where("user_id = ? AND verified_at IS NOT NULL", userID).Order("id ASC").Pluck("email", &emails).Error
 	claims := map[string]interface{}{"emails": emails}
-	if len(emails) == 1 {
+	if len(emails) > 0 {
 		claims["email"] = emails[0]
 		claims["email_verified"] = true
 	}
