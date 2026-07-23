@@ -2816,6 +2816,96 @@
     "vi": "Máy chủ SMTP",
     "zhTW": "SMTP 主機"
   },
+  "忘记密码": {
+    "zhCN": "忘记密码",
+    "en": "Forgot password",
+    "fr": "Mot de passe oublié",
+    "ru": "Забыли пароль",
+    "ja": "パスワードを忘れた場合",
+    "vi": "Quên mật khẩu",
+    "zhTW": "忘記密碼"
+  },
+  "重置密码": {
+    "zhCN": "重置密码",
+    "en": "Reset password",
+    "fr": "Réinitialiser le mot de passe",
+    "ru": "Сбросить пароль",
+    "ja": "パスワードをリセット",
+    "vi": "Đặt lại mật khẩu",
+    "zhTW": "重設密碼"
+  },
+  "输入绑定邮箱，我们会发送一次性验证码。": {
+    "zhCN": "输入绑定邮箱，我们会发送一次性验证码。",
+    "en": "Enter a verified email address to receive a one-time code.",
+    "fr": "Saisissez une adresse e-mail vérifiée pour recevoir un code à usage unique.",
+    "ru": "Введите подтверждённый адрес электронной почты, чтобы получить одноразовый код.",
+    "ja": "確認済みメールアドレスを入力すると、ワンタイムコードが送信されます。",
+    "vi": "Nhập email đã xác minh để nhận mã dùng một lần.",
+    "zhTW": "輸入已驗證的電子郵件地址以接收一次性驗證碼。"
+  },
+  "验证码已发送。如果该邮箱对应可用账号，请检查收件箱。": {
+    "zhCN": "验证码已发送。如果该邮箱对应可用账号，请检查收件箱。",
+    "en": "If an active account uses this email, a code has been sent.",
+    "fr": "Si un compte actif utilise cet e-mail, un code a été envoyé.",
+    "ru": "Если этот адрес принадлежит активной учётной записи, код отправлен.",
+    "ja": "このメールアドレスが有効なアカウントに登録されている場合、コードを送信しました。",
+    "vi": "Nếu email thuộc tài khoản đang hoạt động, mã đã được gửi.",
+    "zhTW": "如果此電子郵件對應可用帳號，驗證碼已寄出。"
+  },
+  "发送重置验证码": {
+    "zhCN": "发送重置验证码",
+    "en": "Send reset code",
+    "fr": "Envoyer le code",
+    "ru": "Отправить код",
+    "ja": "リセットコードを送信",
+    "vi": "Gửi mã đặt lại",
+    "zhTW": "傳送重設驗證碼"
+  },
+  "密码重置验证码": {
+    "zhCN": "密码重置验证码",
+    "en": "Password reset code",
+    "fr": "Code de réinitialisation",
+    "ru": "Код сброса пароля",
+    "ja": "パスワードリセットコード",
+    "vi": "Mã đặt lại mật khẩu",
+    "zhTW": "密碼重設驗證碼"
+  },
+  "设置新密码": {
+    "zhCN": "设置新密码",
+    "en": "Set new password",
+    "fr": "Définir le nouveau mot de passe",
+    "ru": "Установить новый пароль",
+    "ja": "新しいパスワードを設定",
+    "vi": "Đặt mật khẩu mới",
+    "zhTW": "設定新密碼"
+  },
+  "密码已重置，请重新登录。": {
+    "zhCN": "密码已重置，请重新登录。",
+    "en": "Password reset. Sign in again.",
+    "fr": "Mot de passe réinitialisé. Reconnectez-vous.",
+    "ru": "Пароль сброшен. Войдите снова.",
+    "ja": "パスワードをリセットしました。再度ログインしてください。",
+    "vi": "Đã đặt lại mật khẩu. Hãy đăng nhập lại.",
+    "zhTW": "密碼已重設，請重新登入。"
+  },
+  "重置密码失败": {
+    "zhCN": "重置密码失败",
+    "en": "Password reset failed",
+    "fr": "Échec de la réinitialisation",
+    "ru": "Не удалось сбросить пароль",
+    "ja": "パスワードのリセットに失敗しました",
+    "vi": "Đặt lại mật khẩu thất bại",
+    "zhTW": "重設密碼失敗"
+  },
+  "返回登录": {
+    "zhCN": "返回登录",
+    "en": "Back to sign in",
+    "fr": "Retour à la connexion",
+    "ru": "Вернуться ко входу",
+    "ja": "ログインに戻る",
+    "vi": "Quay lại đăng nhập",
+    "zhTW": "返回登入"
+  },
   "Telegram 登录失败": {
     "zhCN": "Telegram 登录失败",
     "en": "Telegram login failed",

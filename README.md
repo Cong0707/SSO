@@ -6,7 +6,7 @@ xem SSO 是面向自有服务的用户管理与 OAuth 2.0 / OpenID Connect 服�
 
 - 三页式注册/登录：首屏使用邮箱识别和人机验证；新用户在第二页设置用户名与密码，已有用户输入密码；第三页完成注册邮箱验证码或按需出现的 MFA 验证。
 - 注册邮箱必须验证成功后才创建账号；本地 SQLite 可显式启用 `SSO_EMAIL_DEBUG` 展示调试验证码，生产环境禁止启用。
-- 用户资料、多邮箱与多第三方身份平等绑定、密码修改、TOTP MFA、一次性备用码、头像上传、设备管理、PAT、JSON 数据导出和安全审计。普通用户可删除任意绑定，但必须至少保留一条；管理员可删除最后一条绑定。
+- 用户资料、多邮箱与多第三方身份平等绑定、密码修改、已验证邮箱找回密码、TOTP MFA、一次性备用码、头像上传、设备管理、PAT、JSON 数据导出和安全审计。普通用户可删除任意绑定，但必须至少保留一条；管理员可删除最后一条绑定。
 - 账号注销采用永久保留模型：账号状态改为 `deactivated`，会话和凭证撤销，数据库记录不物理删除。
 - 账号合并需要先确认当前密码，再登录另一个账号；邮箱和第三方身份合并到 ID 较小的账号，原账号标记为 `merged` 并永久保留供审计。
 - OAuth 应用创建、编辑、删除、客户端密钥轮换和应用图标。
@@ -125,6 +125,8 @@ GET  /oauth/jwks.json
 `SSO_MASTER_KEY_FILE` 用于加密 MFA、上游客户端密钥和 OAuth 令牌载荷；`SSO_OIDC_SIGNING_KEY_FILE` 用于签发 OIDC ID Token。两者必须和数据库一起备份，权限应限制为服务用户。OAuth 令牌只在数据库中保存 SHA-256 索引和 AES-GCM 加密载荷，不再使用单机 BuntDB 文件。
 
 注册和邮箱绑定验证码使用 master key 计算 HMAC-SHA256，10 分钟过期，限制尝试次数并带 60 秒重发间隔。生产环境必须先通过环境变量引导 SMTP、Captcha 和管理员邮箱，完成配置后再开启注册；`SSO_EMAIL_DEBUG` 必须保持为 `false`。
+
+找回密码只接受 active 账号的已验证邮箱，公开响应不区分邮箱是否存在。验证码最多尝试 8 次；重置成功后会撤销该用户的全部 SSO Session、PAT 和 OAuth Token，并写入 `password.reset` 审计事件。
 
 账号注销、合并、重新启用和角色变化会写入事务 outbox。设置 `SSO_LIFECYCLE_WEBHOOK_URL` 与 `SSO_LIFECYCLE_WEBHOOK_SECRET` 后，多 Pod 会安全抢占待发送事件，使用 `X-Xem-Signature-SHA256` 验签，并记录成功回执、重试与死信。
 

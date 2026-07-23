@@ -651,6 +651,16 @@ code {
   font-weight: 650;
   margin-left: 4px;
 }
+.auth-inline-link {
+  justify-self: end;
+  margin-top: -5px;
+  color: var(--accent);
+  font-size: 12px;
+  text-decoration: none;
+}
+.auth-inline-link:hover {
+  text-decoration: underline;
+}
 .auth-footer {
   position: absolute;
   bottom: 24px;

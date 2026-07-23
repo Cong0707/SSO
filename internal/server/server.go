@@ -170,6 +170,8 @@ func (s *Server) Router() *gin.Engine {
 	api.POST("/auth/register/complete", s.registerComplete)
 	api.POST("/auth/login/password", s.loginPassword)
 	api.POST("/auth/login/mfa", s.loginMFA)
+	api.POST("/auth/password-reset/prepare", s.passwordResetPrepare)
+	api.POST("/auth/password-reset/complete", s.passwordResetComplete)
 	api.POST("/auth/email/resend", s.resendVerificationCode)
 	api.POST("/auth/telegram", s.telegramLogin)
 	api.POST("/auth/logout", s.requireAuth, s.requireSession, s.requireCSRF, s.sensitiveRateLimit, s.logout)
@@ -268,7 +270,7 @@ func (s *Server) serveWeb(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "接口不存在"})
 		return
 	}
-	if path == "/" || strings.HasPrefix(path, "/dashboard") || strings.HasPrefix(path, "/apps") || strings.HasPrefix(path, "/authorizations") || strings.HasPrefix(path, "/grants") || strings.HasPrefix(path, "/profile") || strings.HasPrefix(path, "/admin") || strings.HasPrefix(path, "/consent") || strings.HasPrefix(path, "/login") || strings.HasPrefix(path, "/register") {
+	if path == "/" || strings.HasPrefix(path, "/dashboard") || strings.HasPrefix(path, "/apps") || strings.HasPrefix(path, "/authorizations") || strings.HasPrefix(path, "/grants") || strings.HasPrefix(path, "/profile") || strings.HasPrefix(path, "/admin") || strings.HasPrefix(path, "/consent") || strings.HasPrefix(path, "/login") || strings.HasPrefix(path, "/register") || strings.HasPrefix(path, "/forgot-password") {
 		path = "/index.html"
 	}
 	file := filepath.Join(s.Cfg.WebDir, filepath.Clean(strings.TrimPrefix(path, "/")))

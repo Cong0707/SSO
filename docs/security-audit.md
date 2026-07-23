@@ -32,6 +32,7 @@ SSO 的目标是接管身份，不替换 new-api 的业务账号系统：
 - 多个已验证邮箱时，OIDC 标准 claim 稳定输出最早绑定的已验证邮箱为 `email`，并保留完整 `emails` 数组。
 - Gin 访问日志跳过 query string，避免 OAuth `code/state/approval` 泄露到应用访问日志。
 - new-api 迁移 dry-run 会阻止“无密码、只有邮箱、没有第三方身份”的不可登录用户。
+- 已补齐找回密码：只接受 active 账号的已验证邮箱，Captcha 与邮箱/IP 双重限流，未知邮箱返回统一结构；验证码 10 分钟有效且最多尝试 8 次。重置成功后撤销全部 Session、PAT 和 OAuth Token，并记录 `password.reset` 审计事件。
 
 ## 部署修复
 
@@ -41,14 +42,13 @@ SSO 的目标是接管身份，不替换 new-api 的业务账号系统：
 - `/livez` 只检查进程，`/readyz`/`/healthz` 检查数据库、schema 版本、Redis、签名密钥。
 - 镜像示例固定 tag+digest；发布时必须替换占位 digest。生产 registration 默认关闭，完成 SMTP/CAP/管理员配置后再打开。
 
-## 生产迁移阻断项
+## 当前迁移结论
 
-以下问题不是上一轮安全补丁能仓促解决的点，必须在真实接入 new-api 前完成设计或明确降级方案：
+按当前“双轨登录、先接入再逐步简化”的迁移策略，SSO 原先唯一阻止开始改造 new-api 的功能缺口是找回密码；该能力现已补齐，可以进入 new-api 身份边界盘点和 OIDC 双轨接入阶段。以下项目仍需排期，但不再阻止本轮开始 new-api 改造：
 
-- 没有忘记密码/邮箱找回密码流程。只要 SSO 接管密码，生产用户就需要可审计、限流、可撤销的找回入口。
-- 没有 Passkey/WebAuthn。现有 Passkey 用户无法迁移，只能重新绑定；需要产品通知和迁移策略。
+- 没有 Passkey/WebAuthn。现有 Passkey 用户无法迁移，只能在 SSO 重新绑定；切换前需要用户通知和回退入口。
 - 缺少统一的近期认证/step-up。Session 默认 30 天，密码未配置用户仅凭长期 Session 即可设置首个密码、绑定邮箱、启动账号合并或注销。
-- `AccountAlias` 目前只有表和生命周期事件，没有给下游在重建状态或补偿任务中查询 canonical subject 的接口。
+- `AccountAlias` 目前只有表和生命周期事件，没有给下游在重建状态或补偿任务中查询 canonical subject 的接口；首阶段可以依赖 OIDC `sub` 映射和生命周期事件，补偿接口后续补齐。
 - 生命周期事件字段 `role` 表示 SSO 角色，必须在事件 schema 或消费文档中避免被 new-api 当成业务角色写入。
 - Telegram Login Widget 签名数据在 24 小时窗口内可重放；应增加 nonce、一次性消费或更短有效期。
 - 用户名唯一性只有应用层 `LOWER(username)` 检查，数据库唯一索引仍区分大小写；并发注册可能产生大小写变体账号。

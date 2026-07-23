@@ -187,7 +187,11 @@ export function App() {
     localStorage.setItem("sso_theme", dark ? "dark" : "light");
   }, [dark]);
   useEffect(() => {
-    if (location.pathname === "/login" || location.pathname === "/register") {
+    if (
+      location.pathname === "/login" ||
+      location.pathname === "/register" ||
+      location.pathname === "/forgot-password"
+    ) {
       setUser(null);
       setChecking(false);
       return;
@@ -234,7 +238,10 @@ export function App() {
     setToast({ message, tone });
     window.setTimeout(() => setToast(null), 3200);
   };
-  if (checking && !["/login", "/register"].includes(location.pathname))
+  if (
+    checking &&
+    !["/login", "/register", "/forgot-password"].includes(location.pathname)
+  )
     return (
       <div className="loading-screen">
         <strong className="loading-brand">xem SSO</strong>
@@ -264,6 +271,17 @@ export function App() {
           onLocaleChange={changeLocale}
           onUser={acceptUser}
           t={i18n.t}
+          show={show}
+        />
+        <ToastView toast={toast} />
+      </>
+    );
+  if (location.pathname === "/forgot-password")
+    return (
+      <>
+        <ForgotPasswordPage
+          locale={i18n.locale}
+          onLocaleChange={changeLocale}
           show={show}
         />
         <ToastView toast={toast} />
@@ -988,6 +1006,14 @@ function AuthPage(props: {
                   : undefined
               }
             />
+            {flowMode === "login" && !mergeToken && (
+              <Link
+                className="auth-inline-link"
+                to={`/forgot-password?email=${encodeURIComponent(email)}`}
+              >
+                {tr("忘记密码")}
+              </Link>
+            )}
             {flowMode === "register" && (
               <Input
                 label={tr("确认密码")}
@@ -1096,6 +1122,218 @@ function AuthPage(props: {
         )}
         {!authConfig.registration_enabled && step === 1 && (
           <div className="auth-switch">{tr("当前仅允许已有账号登录")}</div>
+        )}
+      </div>
+      <div className="auth-footer">xem SSO · OAuth 2.0 / OpenID Connect</div>
+    </div>
+  );
+}
+function ForgotPasswordPage(props: {
+  locale: LocaleCode;
+  onLocaleChange: (value: string) => void;
+  show: (message: string, tone?: Toast["tone"]) => void;
+}) {
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const [step, setStep] = useState<1 | 2>(1);
+  const [email, setEmail] = useState(params.get("email") || "");
+  const [flowToken, setFlowToken] = useState("");
+  const [code, setCode] = useState("");
+  const [debugCode, setDebugCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [authConfig, setAuthConfig] = useState<{
+    captcha: CaptchaConfig;
+  }>({ captcha: { mode: "none" } });
+
+  useEffect(() => {
+    fetch("/api/auth/config", { credentials: "include" })
+      .then((response) => response.json())
+      .then((payload) => {
+        if (payload.data) setAuthConfig(payload.data);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  async function prepare(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const data = await api<{
+        flow_token: string;
+        debug_code?: string;
+      }>("/api/auth/password-reset/prepare", {
+        method: "POST",
+        body: JSON.stringify({
+          email,
+          captcha_token: captchaToken,
+          locale: props.locale,
+        }),
+      });
+      setFlowToken(data.flow_token);
+      setDebugCode(data.debug_code || "");
+      setStep(2);
+      props.show(
+        tr("验证码已发送。如果该邮箱对应可用账号，请检查收件箱。"),
+        "success",
+      );
+    } catch (error) {
+      props.show(
+        error instanceof Error ? error.message : tr("发送失败"),
+        "error",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function complete(event: FormEvent) {
+    event.preventDefault();
+    if (newPassword !== confirmPassword) {
+      props.show(tr("两次输入的密码不一致"), "error");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api("/api/auth/password-reset/complete", {
+        method: "POST",
+        body: JSON.stringify({
+          flow_token: flowToken,
+          code,
+          new_password: newPassword,
+          confirm_password: confirmPassword,
+        }),
+      });
+      props.show(tr("密码已重置，请重新登录。"), "success");
+      navigate(`/login?email=${encodeURIComponent(email)}`);
+    } catch (error) {
+      props.show(
+        error instanceof Error ? error.message : tr("重置密码失败"),
+        "error",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="auth-layout">
+      <div className="auth-brand">
+        <span>xem SSO</span>
+      </div>
+      <label className="auth-language">
+        <Languages size={16} />
+        <select
+          aria-label={tr("语言")}
+          value={props.locale}
+          onChange={(event) => props.onLocaleChange(event.target.value)}
+        >
+          {LANGUAGE_OPTIONS.map((language) => (
+            <option key={language.code} value={language.code}>
+              {language.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="auth-card">
+        <div className="eyebrow">xem SSO</div>
+        <div className="auth-steps" aria-label={tr("认证进度")}>
+          {[1, 2].map((value) => (
+            <span key={value} className={step >= value ? "active" : ""} />
+          ))}
+        </div>
+        <h1>{tr("重置密码")}</h1>
+        <p className="auth-lead">
+          {tr("输入绑定邮箱，我们会发送一次性验证码。")}
+        </p>
+        {step === 1 ? (
+          <form onSubmit={prepare} className="form-stack">
+            <Input
+              label={tr("邮箱")}
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              autoComplete="email"
+              required
+            />
+            <BotProtectionChallenge
+              config={authConfig.captcha}
+              locale={toIntlLocale(props.locale)}
+              onVerify={setCaptchaToken}
+              onExpire={() => setCaptchaToken("")}
+            />
+            <div className="auth-actions">
+              <Button
+                variant="ghost"
+                onClick={() => navigate("/login")}
+                icon={<ArrowLeft size={16} />}
+              >
+                {tr("返回登录")}
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  busy ||
+                  (authConfig.captcha.mode !== "none" && !captchaToken)
+                }
+                icon={<Mail size={16} />}
+              >
+                {tr("发送重置验证码")}
+              </Button>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={complete} className="form-stack">
+            <Input
+              label={tr("密码重置验证码")}
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              required
+            />
+            {debugCode && (
+              <div className="debug-code">
+                {tr("本地调试验证码：")}
+                <code>{debugCode}</code>
+              </div>
+            )}
+            <Input
+              label={tr("新密码")}
+              type="password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              autoComplete="new-password"
+              hint={tr("至少 8 位，同时包含字母和数字")}
+              required
+            />
+            <Input
+              label={tr("确认新密码")}
+              type="password"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              autoComplete="new-password"
+              required
+            />
+            <div className="auth-actions">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setStep(1);
+                  setCode("");
+                  setDebugCode("");
+                }}
+                icon={<ArrowLeft size={16} />}
+              >
+                {tr("返回")}
+              </Button>
+              <Button type="submit" disabled={busy} icon={<KeyRound size={16} />}>
+                {tr("设置新密码")}
+              </Button>
+            </div>
+          </form>
         )}
       </div>
       <div className="auth-footer">xem SSO · OAuth 2.0 / OpenID Connect</div>
