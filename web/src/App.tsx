@@ -1,5 +1,6 @@
 import * as React from "react";
 import { FormEvent, ReactNode, useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   Link,
   Navigate,
@@ -28,8 +29,10 @@ import {
   LogOut,
   Menu,
   MessageCircle,
+  Mail,
   Moon,
   MoreHorizontal,
+  Pencil,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -45,10 +48,7 @@ import {
   X,
 } from "lucide-react";
 import { api, apiForm, setCsrf } from "./lib/api";
-import {
-  BotProtectionChallenge,
-  CaptchaConfig,
-} from "./BotProtection";
+import { BotProtectionChallenge, CaptchaConfig } from "./BotProtection";
 
 type User = {
   id: number;
@@ -67,6 +67,22 @@ type User = {
   status: "active" | "deactivated" | "merged";
   emails?: UserEmail[];
   identities?: IdentityBinding[];
+  bindings?: UserBinding[];
+};
+type UserBinding = {
+  kind: string;
+  display_name: string;
+  identifier: string;
+  account_name?: string;
+  email?: string;
+  binding_type: "email" | "upstream";
+  binding_id: number;
+  original_user_id: number;
+  primary: boolean;
+  verified: boolean;
+  disabled: boolean;
+  created_at: string;
+  last_login_at?: string;
 };
 type UserEmail = {
   id: number;
@@ -601,6 +617,50 @@ function Panel(props: {
     </section>
   );
 }
+function Modal(props: {
+  open: boolean;
+  title: string;
+  description?: string;
+  children: ReactNode;
+  footer?: ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+}) {
+  if (!props.open) return null;
+  return (
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onMouseDown={props.onClose}
+    >
+      <section
+        className={`modal ${props.wide ? "wide" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={props.title}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="modal-header">
+          <div>
+            <h2>{props.title}</h2>
+            {props.description && <p>{props.description}</p>}
+          </div>
+          <button
+            className="icon-button"
+            onClick={props.onClose}
+            aria-label="关闭"
+          >
+            <X size={18} />
+          </button>
+        </header>
+        <div className="modal-body">{props.children}</div>
+        {props.footer && (
+          <footer className="modal-footer">{props.footer}</footer>
+        )}
+      </section>
+    </div>
+  );
+}
 function Button(props: {
   children: ReactNode;
   onClick?: () => void;
@@ -608,12 +668,14 @@ function Button(props: {
   variant?: "primary" | "secondary" | "danger" | "ghost";
   disabled?: boolean;
   icon?: ReactNode;
+  form?: string;
 }) {
   return (
     <button
       type={props.type || "button"}
       onClick={props.onClick}
       disabled={props.disabled}
+      form={props.form}
       className={`button ${props.variant || "primary"}`}
     >
       {props.icon}
@@ -627,21 +689,29 @@ function Input(
     hint?: string;
   },
 ) {
+  const { label, hint, ...inputProps } = props;
   return (
     <label className="field">
-      {props.label && <span>{props.label}</span>}
-      <input {...props} />
-      {props.hint && <small>{props.hint}</small>}
+      {label && <span>{label}</span>}
+      <input
+        {...inputProps}
+        autoComplete={
+          inputProps.autoComplete ||
+          (inputProps.type === "password" ? "off" : undefined)
+        }
+      />
+      {hint && <small>{hint}</small>}
     </label>
   );
 }
 function Select(
   props: React.SelectHTMLAttributes<HTMLSelectElement> & { label?: string },
 ) {
+  const { label, children, ...selectProps } = props;
   return (
     <label className="field">
-      {props.label && <span>{props.label}</span>}
-      <select {...props}>{props.children}</select>
+      {label && <span>{label}</span>}
+      <select {...selectProps}>{children}</select>
     </label>
   );
 }
@@ -891,10 +961,15 @@ function AuthPage(props: {
             <Button
               type="submit"
               disabled={
-                busy ||
-                (authConfig.captcha.mode !== "none" && !captchaToken)
+                busy || (authConfig.captcha.mode !== "none" && !captchaToken)
               }
-              icon={busy ? <RefreshCw size={16} className="spin" /> : <ArrowRight size={16} />}
+              icon={
+                busy ? (
+                  <RefreshCw size={16} className="spin" />
+                ) : (
+                  <ArrowRight size={16} />
+                )
+              }
             >
               下一步
             </Button>
@@ -902,6 +977,14 @@ function AuthPage(props: {
         )}
         {step === 2 && (
           <form onSubmit={submitCredentials} className="form-stack">
+            <input
+              className="visually-hidden"
+              value={identifier}
+              autoComplete="username"
+              readOnly
+              tabIndex={-1}
+              aria-hidden="true"
+            />
             {flowMode === "register" && (
               <Input
                 label="邮箱"
@@ -917,9 +1000,15 @@ function AuthPage(props: {
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              autoComplete={flowMode === "login" ? "current-password" : "new-password"}
+              autoComplete={
+                flowMode === "login" ? "current-password" : "new-password"
+              }
               required
-              hint={flowMode === "register" ? "至少 8 位，同时包含字母和数字" : undefined}
+              hint={
+                flowMode === "register"
+                  ? "至少 8 位，同时包含字母和数字"
+                  : undefined
+              }
             />
             {flowMode === "register" && (
               <Input
@@ -932,10 +1021,18 @@ function AuthPage(props: {
               />
             )}
             <div className="auth-actions">
-              <Button variant="ghost" onClick={back} icon={<ArrowLeft size={16} />}>
+              <Button
+                variant="ghost"
+                onClick={back}
+                icon={<ArrowLeft size={16} />}
+              >
                 返回
               </Button>
-              <Button type="submit" disabled={busy} icon={<ArrowRight size={16} />}>
+              <Button
+                type="submit"
+                disabled={busy}
+                icon={<ArrowRight size={16} />}
+              >
                 下一步
               </Button>
             </div>
@@ -957,15 +1054,27 @@ function AuthPage(props: {
               </div>
             )}
             <div className="auth-actions">
-              <Button variant="ghost" onClick={back} icon={<ArrowLeft size={16} />}>
+              <Button
+                variant="ghost"
+                onClick={back}
+                icon={<ArrowLeft size={16} />}
+              >
                 返回
               </Button>
               {flowMode === "register" && (
-                <Button variant="secondary" onClick={resend} disabled={countdown > 0 || busy}>
+                <Button
+                  variant="secondary"
+                  onClick={resend}
+                  disabled={countdown > 0 || busy}
+                >
                   {countdown > 0 ? `重新发送（${countdown}s）` : "重新发送"}
                 </Button>
               )}
-              <Button type="submit" disabled={busy} icon={<ArrowRight size={16} />}>
+              <Button
+                type="submit"
+                disabled={busy}
+                icon={<ArrowRight size={16} />}
+              >
                 完成
               </Button>
             </div>
@@ -977,7 +1086,7 @@ function AuthPage(props: {
               <span>第三方登录 / 注册</span>
             </div>
             <div className="provider-grid">
-              {visibleProviders.map((provider) => (
+              {visibleProviders.map((provider) =>
                 provider.kind === "telegram" && provider.bot_username ? (
                   <TelegramLoginButton
                     key={provider.kind}
@@ -996,8 +1105,8 @@ function AuthPage(props: {
                     <span>{provider.display_name}</span>
                     <small>登录 / 注册</small>
                   </a>
-                )
-              ))}
+                ),
+              )}
             </div>
             <p className="provider-hint">
               首次使用会自动创建账号并导入用户名、已验证邮箱和头像，之后可在个人资料中修改。
@@ -1045,7 +1154,9 @@ function TelegramLoginButton(props: {
         );
         props.onSuccess(data.user, data.csrf_token);
       } catch (error) {
-        props.onError(error instanceof Error ? error.message : "Telegram 登录失败");
+        props.onError(
+          error instanceof Error ? error.message : "Telegram 登录失败",
+        );
       }
     };
     container.replaceChildren();
@@ -1072,6 +1183,7 @@ function TelegramLoginButton(props: {
 }
 
 function ProviderIcon({ kind }: { kind: string }) {
+  if (kind === "email") return <Mail size={17} />;
   if (kind === "github") return <Github size={17} />;
   if (kind === "discord") return <Users size={17} />;
   if (kind === "linuxdo") return <Globe2 size={17} />;
@@ -1706,6 +1818,25 @@ function ProfilePage({
   t: T;
   show: (message: string, tone?: Toast["tone"]) => void;
 }) {
+  const [section, setSection] = useState<
+    | "account"
+    | "security"
+    | "sessions"
+    | "tokens"
+    | "bindings"
+    | "activity"
+    | "danger"
+  >("account");
+  const [modal, setModal] = useState<
+    | null
+    | "password"
+    | "email"
+    | "mfa"
+    | "mfa-disable"
+    | "token"
+    | "merge"
+    | "delete"
+  >(null);
   const [profile, setProfile] = useState(user);
   const [sessions, setSessions] = useState<
     Array<{
@@ -1734,6 +1865,7 @@ function ProfilePage({
   const [password, setPassword] = useState({
     current_password: "",
     new_password: "",
+    confirm_password: "",
   });
   const [mfaSecret, setMfaSecret] = useState<{
     secret: string;
@@ -1821,6 +1953,7 @@ function ProfilePage({
       setEmailFlow(null);
       setEmailCode("");
       setEmailPassword("");
+      setModal(null);
       show("新邮箱已验证并设为主邮箱", "success");
       load();
     } catch (error) {
@@ -1829,16 +1962,25 @@ function ProfilePage({
   }
   async function changePassword(event: FormEvent) {
     event.preventDefault();
+    if (password.new_password !== password.confirm_password) {
+      show("两次输入的新密码不一致", "error");
+      return;
+    }
     try {
       await api("/api/profile/password", {
         method: "POST",
         body: JSON.stringify(password),
       });
-      setPassword({ current_password: "", new_password: "" });
+      setPassword({
+        current_password: "",
+        new_password: "",
+        confirm_password: "",
+      });
       const updatedProfile = { ...profile, password_configured: true };
       setProfile(updatedProfile);
       setUser(updatedProfile);
       show("密码已修改，其他设备已退出", "success");
+      setModal(null);
       load();
     } catch (error) {
       show(error instanceof Error ? error.message : "修改失败", "error");
@@ -1851,6 +1993,8 @@ function ProfilePage({
         body: "{}",
       });
       setMfaSecret(data);
+      setBackupCodes([]);
+      setModal("mfa");
     } catch (error) {
       show(error instanceof Error ? error.message : "MFA 设置失败", "error");
     }
@@ -1868,6 +2012,7 @@ function ProfilePage({
       setBackupCodes(data.backup_codes);
       setMfaSecret(null);
       setProfile({ ...profile, mfa_enabled: true });
+      setUser({ ...profile, mfa_enabled: true });
       show("MFA 已启用", "success");
     } catch (error) {
       show(error instanceof Error ? error.message : "MFA 验证失败", "error");
@@ -1884,6 +2029,7 @@ function ProfilePage({
       setProfile({ ...profile, mfa_enabled: false });
       setUser({ ...profile, mfa_enabled: false });
       show("MFA 已停用", "success");
+      setModal(null);
     } catch (error) {
       show(error instanceof Error ? error.message : "停用失败", "error");
     }
@@ -1942,7 +2088,8 @@ function ProfilePage({
   }
   async function deleteAccount(event: FormEvent) {
     event.preventDefault();
-    if (!window.confirm("确认注销账户？账号记录会永久保留，但将无法登录。")) return;
+    if (!window.confirm("确认注销账户？账号记录会永久保留，但将无法登录。"))
+      return;
     try {
       await api("/api/profile", {
         method: "DELETE",
@@ -1958,452 +2105,772 @@ function ProfilePage({
     if (!window.confirm("继续后需要登录另一个账号。合并完成后不能自动拆分。"))
       return;
     try {
-      const data = await api<{ login_url: string }>("/api/profile/merge/start", {
-        method: "POST",
-        body: JSON.stringify({ password: mergePassword }),
-      });
+      const data = await api<{ login_url: string }>(
+        "/api/profile/merge/start",
+        {
+          method: "POST",
+          body: JSON.stringify({ password: mergePassword }),
+        },
+      );
       window.location.assign(data.login_url);
     } catch (error) {
       show(error instanceof Error ? error.message : "发起合并失败", "error");
     }
   }
+  const profileNavigation = [
+    { id: "account", label: "个人资料", icon: UserCircle2 },
+    { id: "security", label: "账号安全", icon: ShieldCheck },
+    { id: "sessions", label: "登录设备", icon: Smartphone },
+    { id: "tokens", label: "访问令牌", icon: KeyRound },
+    { id: "bindings", label: "账号绑定", icon: Link2 },
+    { id: "activity", label: "安全活动", icon: Activity },
+    { id: "danger", label: "危险操作", icon: Trash2 },
+  ] as const;
   return (
     <>
-      <PageHeader title={t("profile")} description="更新你的账号信息" />
-      <div className="profile-grid">
-        <Panel title="个人资料">
-          <form onSubmit={saveProfile} className="form-stack">
-            <div className="profile-heading">
-              <Avatar user={profile} />
-              <div>
-                <strong>{profile.username}</strong>
-                <span>{profile.email}</span>
-                <label className="upload-button">
-                  <Clipboard size={14} />
-                  上传头像
+      <PageHeader
+        title={t("profile")}
+        description="管理个人资料、登录方式与账号安全"
+      />
+      <div className="profile-settings-layout">
+        <aside className="profile-settings-nav" aria-label="个人设置">
+          <div className="profile-nav-account">
+            <Avatar user={profile} small />
+            <div>
+              <strong>{profile.display_name || profile.username}</strong>
+              <span>{profile.email}</span>
+            </div>
+          </div>
+          {profileNavigation.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                className={section === item.id ? "active" : ""}
+                onClick={() => setSection(item.id)}
+              >
+                <Icon size={16} />
+                {item.label}
+                <ArrowRight size={14} />
+              </button>
+            );
+          })}
+        </aside>
+        <section className="profile-settings-content">
+          {section === "account" && (
+            <>
+              <div className="section-heading">
+                <div>
+                  <h2>个人资料</h2>
+                  <p>更新公开展示信息和界面偏好。</p>
+                </div>
+              </div>
+              <form onSubmit={saveProfile} className="settings-form-body">
+                <div className="profile-avatar-row">
+                  <Avatar user={profile} />
+                  <div>
+                    <strong>{profile.username}</strong>
+                    <span>JPG、PNG 或 WebP，最大 2MB</span>
+                    <label className="upload-button">
+                      <Clipboard size={14} />
+                      上传头像
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={uploadAvatar}
+                      />
+                    </label>
+                  </div>
+                </div>
+                <Input
+                  label="用户名"
+                  value={profile.username}
+                  disabled
+                  hint="用户名由管理员维护"
+                />
+                <Input
+                  label="显示名称"
+                  value={profile.display_name}
+                  onChange={(event) =>
+                    setProfile({
+                      ...profile,
+                      display_name: event.target.value,
+                    })
+                  }
+                />
+                <div className="setting-action-row">
+                  <div>
+                    <strong>主邮箱</strong>
+                    <span>
+                      {profile.email} ·{" "}
+                      {profile.email_verified ? "已验证" : "未验证"}
+                    </span>
+                  </div>
+                  <Button variant="secondary" onClick={() => setModal("email")}>
+                    更换邮箱
+                  </Button>
+                </div>
+                <Input
+                  label="头像 URL"
+                  value={profile.avatar_url}
+                  onChange={(event) =>
+                    setProfile({ ...profile, avatar_url: event.target.value })
+                  }
+                />
+                <Select
+                  label={t("language")}
+                  value={profile.locale}
+                  onChange={(event) =>
+                    setProfile({ ...profile, locale: event.target.value })
+                  }
+                >
+                  <option value="zh-CN">{t("chinese")}</option>
+                  <option value="en">{t("english")}</option>
+                </Select>
+                <label className="setting-toggle">
+                  <div>
+                    <strong>接收安全邮件</strong>
+                    <span>密码、MFA、邮箱和异常登录发生变更时发送提醒。</span>
+                  </div>
                   <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={uploadAvatar}
+                    type="checkbox"
+                    checked={profile.security_email_enabled}
+                    onChange={(event) =>
+                      setProfile({
+                        ...profile,
+                        security_email_enabled: event.target.checked,
+                      })
+                    }
                   />
                 </label>
+                <div className="settings-action-bar">
+                  <Button type="submit" icon={<Check size={16} />}>
+                    {t("save")}
+                  </Button>
+                </div>
+              </form>
+            </>
+          )}
+          {section === "security" && (
+            <>
+              <div className="section-heading">
+                <div>
+                  <h2>账号安全</h2>
+                  <p>密码和二次验证分别在独立流程中完成。</p>
+                </div>
               </div>
-            </div>
+              <div className="settings-list">
+                <div className="setting-action-row">
+                  <div>
+                    <strong>登录密码</strong>
+                    <span>
+                      {profile.password_configured
+                        ? "已设置，可随时更新"
+                        : "尚未设置密码"}
+                    </span>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setModal("password")}
+                    icon={<KeyRound size={15} />}
+                  >
+                    {profile.password_configured ? "修改密码" : "设置密码"}
+                  </Button>
+                </div>
+                <div className="setting-action-row">
+                  <div>
+                    <strong>二次验证（MFA）</strong>
+                    <span>
+                      {profile.mfa_enabled
+                        ? "已启用 Authenticator 验证"
+                        : "未启用，建议配置"}
+                    </span>
+                  </div>
+                  {profile.mfa_enabled ? (
+                    <Button
+                      variant="danger"
+                      onClick={() => setModal("mfa-disable")}
+                    >
+                      停用
+                    </Button>
+                  ) : (
+                    <Button onClick={setupMFA} icon={<Shield size={15} />}>
+                      启用
+                    </Button>
+                  )}
+                </div>
+                <div className="setting-action-row">
+                  <div>
+                    <strong>邮箱验证</strong>
+                    <span>
+                      {profile.email_verified
+                        ? `${profile.email} 已验证`
+                        : "当前邮箱尚未验证"}
+                    </span>
+                  </div>
+                  <Badge tone={profile.email_verified ? "success" : "warning"}>
+                    {profile.email_verified ? "良好" : "待完善"}
+                  </Badge>
+                </div>
+              </div>
+            </>
+          )}
+          {section === "sessions" && (
+            <>
+              <div className="section-heading">
+                <div>
+                  <h2>登录设备</h2>
+                  <p>查看当前有效会话并撤销不再使用的设备。</p>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={logoutAll}
+                  icon={<LogOut size={15} />}
+                >
+                  退出其它设备
+                </Button>
+              </div>
+              <Table
+                headers={["设备", "IP", "浏览器 / 系统", "最近活跃", "操作"]}
+                rows={sessions.map((session) => [
+                  <div key="device">
+                    <strong>{session.device_name}</strong>
+                    {session.current && <Badge tone="success">当前</Badge>}
+                  </div>,
+                  session.ip,
+                  <span className="ua">{session.user_agent}</span>,
+                  formatDate(session.last_seen_at),
+                  session.current ? (
+                    "—"
+                  ) : (
+                    <Button
+                      key="revoke"
+                      variant="ghost"
+                      onClick={() => revokeSession(session.id)}
+                      icon={<X size={14} />}
+                    >
+                      撤销
+                    </Button>
+                  ),
+                ])}
+                empty="暂无有效会话"
+              />
+            </>
+          )}
+          {section === "tokens" && (
+            <>
+              <div className="section-heading">
+                <div>
+                  <h2>个人访问令牌</h2>
+                  <p>用于服务端脚本、CI 和自动化的长期 API 凭证。</p>
+                </div>
+                <Button
+                  onClick={() => {
+                    setPlainPAT("");
+                    setModal("token");
+                  }}
+                  icon={<Plus size={15} />}
+                >
+                  创建 token
+                </Button>
+              </div>
+              <div className="settings-list">
+                {tokens.length ? (
+                  tokens.map((token) => (
+                    <div className="setting-action-row" key={token.id}>
+                      <div>
+                        <strong>{token.name}</strong>
+                        <span>
+                          <code>{token.prefix}</code> · {token.scopes} ·{" "}
+                          {formatDate(token.created_at)}
+                        </span>
+                      </div>
+                      <Button
+                        variant="danger"
+                        onClick={() =>
+                          api(`/api/profile/tokens/${token.id}`, {
+                            method: "DELETE",
+                          }).then(load)
+                        }
+                        icon={<Trash2 size={14} />}
+                      >
+                        撤销
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  <Empty text="还没有创建任何 token" />
+                )}
+              </div>
+            </>
+          )}
+          {section === "bindings" && (
+            <>
+              <div className="section-heading">
+                <div>
+                  <h2>账号绑定</h2>
+                  <p>邮箱和第三方身份使用同一套绑定记录。</p>
+                </div>
+              </div>
+              <div className="binding-list unified">
+                {profile.bindings?.map((binding) => (
+                  <div
+                    className="binding-record"
+                    key={`${binding.binding_type}-${binding.binding_id}`}
+                  >
+                    <ProviderIcon kind={binding.kind} />
+                    <div>
+                      <strong>
+                        {binding.display_name} <code>{binding.identifier}</code>
+                      </strong>
+                      <span>
+                        {binding.account_name || binding.email || "已验证身份"}{" "}
+                        · 来源账号 #{binding.original_user_id}
+                      </span>
+                    </div>
+                    <div className="binding-badges">
+                      {binding.primary && <Badge tone="success">主绑定</Badge>}
+                      <Badge tone={binding.verified ? "success" : "warning"}>
+                        {binding.verified ? "已验证" : "未验证"}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="section-heading binding-connect-heading">
+                <div>
+                  <h2>连接登录方式</h2>
+                  <p>只有管理员已完整配置的登录方式会在这里出现。</p>
+                </div>
+              </div>
+              <div className="settings-list">
+                {providers.map((provider) => (
+                  <div className="setting-action-row" key={provider.kind}>
+                    <div className="provider-title">
+                      <ProviderIcon kind={provider.kind} />
+                      <div>
+                        <strong>{provider.display_name}</strong>
+                        <span>
+                          {provider.bound
+                            ? "已有绑定，可继续绑定另一个账号"
+                            : "尚未绑定"}
+                        </span>
+                      </div>
+                    </div>
+                    <a
+                      className="button secondary"
+                      href={`/oauth/upstream/${provider.kind}/start?return_to=/profile`}
+                    >
+                      {provider.bound ? "继续绑定" : "连接"}
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {section === "activity" && (
+            <>
+              <div className="section-heading">
+                <div>
+                  <h2>安全活动</h2>
+                  <p>最近 100 条账号安全事件。</p>
+                </div>
+              </div>
+              <Table
+                headers={["时间", "动作", "IP"]}
+                rows={audit.map((event) => [
+                  formatDate(event.created_at),
+                  event.action,
+                  event.ip || "—",
+                ])}
+                empty="暂无安全活动"
+              />
+            </>
+          )}
+          {section === "danger" && (
+            <>
+              <div className="section-heading">
+                <div>
+                  <h2>危险操作</h2>
+                  <p>这些操作会改变账号归属或登录状态。</p>
+                </div>
+              </div>
+              <div className="settings-list danger-settings">
+                <div className="setting-action-row">
+                  <div>
+                    <strong>导出我的数据</strong>
+                    <span>下载平台保存的全部账号数据（JSON）。</span>
+                  </div>
+                  <a className="button secondary" href="/api/profile/export">
+                    <Clipboard size={15} />
+                    导出
+                  </a>
+                </div>
+                <div className="setting-action-row">
+                  <div>
+                    <strong>合并账号</strong>
+                    <span>
+                      验证另一个账号后，绑定信息将合并到编号较小的账号。
+                    </span>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setModal("merge")}
+                    icon={<Link2 size={15} />}
+                  >
+                    合并账号
+                  </Button>
+                </div>
+                <div className="setting-action-row">
+                  <div>
+                    <strong>注销账户</strong>
+                    <span>账号和审计数据永久保留，但账号将无法登录。</span>
+                  </div>
+                  <Button
+                    variant="danger"
+                    onClick={() => setModal("delete")}
+                    icon={<Trash2 size={15} />}
+                  >
+                    注销账户
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+
+      <Modal
+        open={modal === "password"}
+        title={profile.password_configured ? "修改密码" : "设置密码"}
+        description="修改后其它设备上的会话将被撤销。"
+        onClose={() => setModal(null)}
+      >
+        <form onSubmit={changePassword} className="form-stack">
+          {profile.password_configured && (
             <Input
-              label="显示名称"
-              value={profile.display_name}
+              label="当前密码"
+              type="password"
+              value={password.current_password}
               onChange={(event) =>
-                setProfile({ ...profile, display_name: event.target.value })
+                setPassword({
+                  ...password,
+                  current_password: event.target.value,
+                })
               }
+              autoComplete="current-password"
+              required
             />
+          )}
+          <Input
+            label="新密码"
+            type="password"
+            value={password.new_password}
+            onChange={(event) =>
+              setPassword({ ...password, new_password: event.target.value })
+            }
+            hint="至少 8 位，且同时包含字母和数字"
+            autoComplete="new-password"
+            required
+          />
+          <Input
+            label="确认新密码"
+            type="password"
+            value={password.confirm_password}
+            onChange={(event) =>
+              setPassword({
+                ...password,
+                confirm_password: event.target.value,
+              })
+            }
+            autoComplete="new-password"
+            required
+          />
+          <div className="modal-form-actions">
+            <Button variant="secondary" onClick={() => setModal(null)}>
+              取消
+            </Button>
+            <Button type="submit">确认修改</Button>
+          </div>
+        </form>
+      </Modal>
+      <Modal
+        open={modal === "email"}
+        title="更换邮箱"
+        description="新邮箱验证成功后会成为主邮箱，旧邮箱仍作为绑定记录保留。"
+        onClose={() => {
+          setModal(null);
+          setProfile({ ...profile, email: savedEmail });
+          setEmailFlow(null);
+        }}
+      >
+        {!emailFlow ? (
+          <form onSubmit={saveProfile} className="form-stack">
             <Input
-              label={t("email")}
+              label="新邮箱"
               type="email"
               value={profile.email}
               onChange={(event) =>
                 setProfile({ ...profile, email: event.target.value })
               }
-              hint={profile.email_verified ? "已验证" : "邮箱还没有验证"}
+              required
             />
-            {profile.email !== savedEmail && profile.password_configured && (
+            {profile.password_configured && (
               <Input
                 label="当前密码"
                 type="password"
                 value={emailPassword}
                 onChange={(event) => setEmailPassword(event.target.value)}
-                hint="更换邮箱前需要确认当前密码"
                 required
               />
             )}
-            {emailFlow && (
-              <div className="email-verification-box">
-                <Input
-                  label="新邮箱验证码"
-                  value={emailCode}
-                  onChange={(event) => setEmailCode(event.target.value)}
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  required
-                />
-                {emailFlow.debugCode && (
-                  <span className="form-hint">
-                    本地调试验证码：<code>{emailFlow.debugCode}</code>
-                  </span>
-                )}
-                <Button onClick={completeEmailChange} icon={<BadgeCheck size={16} />}>
-                  验证新邮箱
-                </Button>
+            <div className="modal-form-actions">
+              <Button variant="secondary" onClick={() => setModal(null)}>
+                取消
+              </Button>
+              <Button type="submit">发送验证码</Button>
+            </div>
+          </form>
+        ) : (
+          <div className="form-stack">
+            <Input
+              label="邮箱验证码"
+              value={emailCode}
+              onChange={(event) => setEmailCode(event.target.value)}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              required
+            />
+            {emailFlow.debugCode && (
+              <div className="debug-code">
+                本地调试验证码：<code>{emailFlow.debugCode}</code>
               </div>
             )}
-            <Input
-              label="头像 URL"
-              value={profile.avatar_url}
-              onChange={(event) =>
-                setProfile({ ...profile, avatar_url: event.target.value })
-              }
-            />
-            <Select
-              label={t("language")}
-              value={profile.locale}
-              onChange={(event) =>
-                setProfile({ ...profile, locale: event.target.value })
-              }
-            >
-              <option value="zh-CN">{t("chinese")}</option>
-              <option value="en">{t("english")}</option>
-            </Select>
-            <label className="toggle-row">
-              <input
-                type="checkbox"
-                checked={profile.security_email_enabled}
-                onChange={(event) =>
-                  setProfile({
-                    ...profile,
-                    security_email_enabled: event.target.checked,
-                  })
-                }
-              />
-              <span>接收安全邮件</span>
-            </label>
-            <Button type="submit" icon={<Check size={16} />}>
-              {t("save")}
-            </Button>
-          </form>
-        </Panel>
-        <Panel title={t("security")}>
-          <div className="security-overview">
-            <SecurityItem
-              label={t("mfa")}
-              status={profile.mfa_enabled ? "已启用" : "建议启用 MFA"}
-              good={profile.mfa_enabled}
-              action={
-                !profile.mfa_enabled ? (
-                  <Button
-                    variant="ghost"
-                    onClick={setupMFA}
-                    icon={<Shield size={15} />}
-                  >
-                    {t("enableMFA")}
-                  </Button>
-                ) : undefined
-              }
-            />
-            <SecurityItem
-              label="邮箱验证"
-              status={profile.email_verified ? "良好" : "请先验证邮箱"}
-              good={profile.email_verified}
-            />
-            <SecurityItem
-              label="活跃登录设备"
-              status={`${sessions.length} 台`}
-              good={sessions.length < 8}
-            />
-            <SecurityItem
-              label={t("pats")}
-              status={`${tokens.length} 个`}
-              good={tokens.length > 0}
-            />
-          </div>
-        </Panel>
-        <Panel
-          title={t("sessions")}
-          action={
-            <Button
-              variant="ghost"
-              onClick={logoutAll}
-              icon={<LogOut size={15} />}
-            >
-              {t("allDevices")}
-            </Button>
-          }
-          className="wide-panel"
-        >
-          <Table
-            headers={["设备标签", "IP", "设备", "最近活跃", "操作"]}
-            rows={sessions.map((session) => [
-              <div key="device">
-                <strong>{session.device_name}</strong>
-                {session.current && <Badge tone="success">当前</Badge>}
-              </div>,
-              session.ip,
-              <span className="ua">{session.user_agent}</span>,
-              formatDate(session.last_seen_at),
-              session.current ? (
-                "—"
-              ) : (
-                <Button
-                  key="revoke"
-                  variant="ghost"
-                  onClick={() => revokeSession(session.id)}
-                  icon={<X size={14} />}
-                >
-                  {t("revoke")}
-                </Button>
-              ),
-            ])}
-            empty="—"
-          />
-        </Panel>
-        <Panel title={t("changePassword")}>
-          <form onSubmit={changePassword} className="form-stack">
-            {profile.password_configured ? (
-              <Input
-                label={t("currentPassword")}
-                type="password"
-                value={password.current_password}
-                onChange={(event) =>
-                  setPassword({
-                    ...password,
-                    current_password: event.target.value,
-                  })
-                }
-                required
-              />
-            ) : (
-              <p className="form-hint">
-                这是第三方登录账号，首次设置密码无需输入旧密码。
-              </p>
-            )}
-            <Input
-              label={t("newPassword")}
-              type="password"
-              value={password.new_password}
-              onChange={(event) =>
-                setPassword({ ...password, new_password: event.target.value })
-              }
-              required
-            />
-            <Button type="submit" icon={<KeyRound size={16} />}>
-              {t("changePassword")}
-            </Button>
-          </form>
-        </Panel>
-        <Panel
-          title={t("mfa")}
-          description={profile.mfa_enabled ? "已启用" : "未启用"}
-        >
-          {mfaSecret && (
-            <form onSubmit={enableMFA} className="mfa-setup">
-              <code>{mfaSecret.secret}</code>
-              <p>在 Authenticator App 中添加此密钥，然后输入 6 位验证码。</p>
-              <Input name="code" label="验证码" inputMode="numeric" required />
-              <Button type="submit" icon={<ShieldCheck size={16} />}>
-                {t("confirm")}
+            <div className="modal-form-actions">
+              <Button variant="secondary" onClick={() => setEmailFlow(null)}>
+                返回
               </Button>
-            </form>
-          )}
-          {backupCodes.length > 0 && (
-            <div className="backup-codes">
-              <strong>备用码，请立即保存</strong>
-              <code>{backupCodes.join("  ")}</code>
+              <Button onClick={completeEmailChange}>验证并绑定</Button>
             </div>
-          )}
-          {profile.mfa_enabled && (
-            <form className="form-stack" onSubmit={disableMFA}>
-              {profile.password_configured && (
-                <Input
-                  label={t("currentPassword")}
-                  type="password"
-                  value={mfaDisable.password}
-                  onChange={(event) =>
-                    setMfaDisable({
-                      ...mfaDisable,
-                      password: event.target.value,
-                    })
-                  }
-                  required
-                />
-              )}
-              <Input
-                label="MFA 验证码或备用码"
-                value={mfaDisable.code}
-                onChange={(event) =>
-                  setMfaDisable({ ...mfaDisable, code: event.target.value })
-                }
-                required
-              />
-              <Button
-                type="submit"
-                variant="danger"
-                icon={<Shield size={15} />}
+          </div>
+        )}
+      </Modal>
+      <Modal
+        open={modal === "mfa"}
+        title="启用二次验证"
+        description={
+          backupCodes.length
+            ? "请立即保存备用码。"
+            : "使用 Authenticator App 扫描二维码并验证。"
+        }
+        onClose={() => {
+          setModal(null);
+          setMfaSecret(null);
+          setBackupCodes([]);
+        }}
+      >
+        {mfaSecret && (
+          <form onSubmit={enableMFA} className="form-stack">
+            <div className="mfa-qr">
+              <QRCodeSVG value={mfaSecret.otpauth_url} size={208} />
+            </div>
+            <div className="manual-secret">
+              <span>无法扫码？手动输入密钥</span>
+              <code>{mfaSecret.secret}</code>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => navigator.clipboard.writeText(mfaSecret.secret)}
+                title="复制密钥"
               >
-                {t("disableMFA")}
-              </Button>
-            </form>
-          )}
-        </Panel>
-        <Panel
-          title={t("pats")}
-          description="长期有效的 API 凭证，用于服务端脚本、CI 和自动化。"
-        >
-          <form className="inline-form" onSubmit={createPAT}>
+                <Copy size={15} />
+              </button>
+            </div>
             <Input
-              placeholder="令牌名称"
-              value={patName}
-              onChange={(event) => setPatName(event.target.value)}
+              name="code"
+              label="Authenticator 验证码"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
               required
             />
-            <Button type="submit" icon={<Plus size={16} />}>
-              {t("createToken")}
-            </Button>
+            <div className="modal-form-actions">
+              <Button variant="secondary" onClick={() => setModal(null)}>
+                取消
+              </Button>
+              <Button type="submit">验证并启用</Button>
+            </div>
           </form>
+        )}
+        {backupCodes.length > 0 && (
+          <div className="form-stack">
+            <div className="backup-code-grid">
+              {backupCodes.map((code) => (
+                <code key={code}>{code}</code>
+              ))}
+            </div>
+            <div className="notice warning">
+              每个备用码只能使用一次，请存放在安全位置。
+            </div>
+            <div className="modal-form-actions">
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  navigator.clipboard.writeText(backupCodes.join("\n"))
+                }
+                icon={<Copy size={15} />}
+              >
+                复制全部
+              </Button>
+              <Button
+                onClick={() => {
+                  setModal(null);
+                  setBackupCodes([]);
+                }}
+              >
+                完成
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+      <Modal
+        open={modal === "mfa-disable"}
+        title="停用二次验证"
+        description="确认后将删除当前 MFA 密钥和所有备用码。"
+        onClose={() => setModal(null)}
+      >
+        <form onSubmit={disableMFA} className="form-stack">
+          {profile.password_configured && (
+            <Input
+              label="当前密码"
+              type="password"
+              value={mfaDisable.password}
+              onChange={(event) =>
+                setMfaDisable({ ...mfaDisable, password: event.target.value })
+              }
+              required
+            />
+          )}
+          <Input
+            label="MFA 验证码或备用码"
+            value={mfaDisable.code}
+            onChange={(event) =>
+              setMfaDisable({ ...mfaDisable, code: event.target.value })
+            }
+            required
+          />
+          <div className="modal-form-actions">
+            <Button variant="secondary" onClick={() => setModal(null)}>
+              取消
+            </Button>
+            <Button type="submit" variant="danger">
+              确认停用
+            </Button>
+          </div>
+        </form>
+      </Modal>
+      <Modal
+        open={modal === "token"}
+        title="创建个人访问令牌"
+        description="令牌只会完整显示一次。"
+        onClose={() => {
+          setModal(null);
+          setPlainPAT("");
+        }}
+      >
+        <form onSubmit={createPAT} className="form-stack">
+          <Input
+            label="令牌名称"
+            value={patName}
+            onChange={(event) => setPatName(event.target.value)}
+            placeholder="例如：CI deployment"
+            required
+          />
           {plainPAT && (
             <div className="secret-value">
               <code>{plainPAT}</code>
               <button
+                type="button"
                 className="icon-button"
                 onClick={() => navigator.clipboard.writeText(plainPAT)}
-                title="Copy"
               >
                 <Copy size={16} />
               </button>
             </div>
           )}
-          <div className="token-list">
-            {tokens.length ? (
-              tokens.map((token) => (
-                <div className="token-row" key={token.id}>
-                  <div>
-                    <strong>{token.name}</strong>
-                    <span>
-                      {token.prefix} · {token.scopes}
-                    </span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    onClick={() =>
-                      api(`/api/profile/tokens/${token.id}`, {
-                        method: "DELETE",
-                      }).then(load)
-                    }
-                    icon={<Trash2 size={15} />}
-                  >
-                    {t("revoke")}
-                  </Button>
-                </div>
-              ))
-            ) : (
-              <Empty text={t("noTokens")} />
-            )}
+          <div className="modal-form-actions">
+            <Button variant="secondary" onClick={() => setModal(null)}>
+              关闭
+            </Button>
+            {!plainPAT && <Button type="submit">创建 token</Button>}
           </div>
-        </Panel>
-        <Panel title={t("providers")} description="连接用于登录的第三方身份。">
-          {(profile.emails?.length || 0) > 0 && (
-            <div className="binding-summary">
-              <strong>已绑定邮箱</strong>
-              {profile.emails?.map((email) => (
-                <span key={email.id}>
-                  {email.email}
-                  {email.primary ? " · 主邮箱" : ""}
-                </span>
-              ))}
-            </div>
+        </form>
+      </Modal>
+      <Modal
+        open={modal === "merge"}
+        title="合并账号"
+        description="继续后将打开登录流程，用另一个账号完成验证。"
+        onClose={() => setModal(null)}
+      >
+        <form onSubmit={startMerge} className="form-stack">
+          {profile.password_configured && (
+            <Input
+              label="当前密码"
+              type="password"
+              value={mergePassword}
+              onChange={(event) => setMergePassword(event.target.value)}
+              required
+            />
           )}
-          {(profile.identities?.length || 0) > 0 && (
-            <div className="binding-summary">
-              <strong>已绑定第三方账号</strong>
-              {profile.identities?.map((identity) => (
-                <span key={identity.id}>
-                  {identity.provider.display_name} · {identity.external_name || identity.external_id}
-                </span>
-              ))}
-            </div>
+          <div className="notice warning">
+            合并后，绑定会叠加到编号较小的账号；原账号永久保留供审计。
+          </div>
+          <div className="modal-form-actions">
+            <Button variant="secondary" onClick={() => setModal(null)}>
+              取消
+            </Button>
+            <Button type="submit">继续验证另一个账号</Button>
+          </div>
+        </form>
+      </Modal>
+      <Modal
+        open={modal === "delete"}
+        title="注销账户"
+        description="账号记录不会物理删除，但注销后无法继续登录。"
+        onClose={() => setModal(null)}
+      >
+        <form onSubmit={deleteAccount} className="form-stack">
+          {profile.password_configured && (
+            <Input
+              label="当前密码"
+              type="password"
+              value={deletePassword}
+              onChange={(event) => setDeletePassword(event.target.value)}
+              required
+            />
           )}
-          <div className="provider-list">
-            {providers.map((provider) => (
-              <div className="provider-row" key={provider.kind}>
-                <ProviderIcon kind={provider.kind} />
-                <div>
-                  <strong>{provider.display_name}</strong>
-                  <span>{provider.bound ? t("connected") : "可连接"}</span>
-                </div>
-                <a
-                  className="button ghost"
-                  href={`/oauth/upstream/${provider.kind}/start?return_to=/profile`}
-                >
-                  {provider.bound ? "重新连接" : t("connect")}
-                </a>
-              </div>
-            ))}
+          <div className="modal-form-actions">
+            <Button variant="secondary" onClick={() => setModal(null)}>
+              取消
+            </Button>
+            <Button type="submit" variant="danger">
+              确认注销
+            </Button>
           </div>
-        </Panel>
-        <Panel title={t("audit")} className="wide-panel">
-          <Table
-            headers={["时间", "动作", "IP"]}
-            rows={audit.map((event) => [
-              formatDate(event.created_at),
-              event.action,
-              event.ip || "—",
-            ])}
-            empty={t("noData")}
-          />
-        </Panel>
-        <Panel title={t("danger")} className="wide-panel danger-panel">
-          <div className="danger-row export-row">
-            <div>
-              <strong>导出我的数据</strong>
-              <span>下载平台保存的、与你账号相关的全部数据（JSON 格式）。</span>
-            </div>
-            <a className="button secondary" href="/api/profile/export">
-              <Clipboard size={16} />
-              导出我的数据
-            </a>
-          </div>
-          <form className="danger-row merge-row" onSubmit={startMerge}>
-            <div>
-              <strong>合并账号</strong>
-              <span>登录另一个账号，将邮箱和第三方登录渠道合并到编号较小的账号。</span>
-            </div>
-            <div className="danger-actions">
-              {profile.password_configured && (
-                <Input
-                  type="password"
-                  placeholder={t("currentPassword")}
-                  value={mergePassword}
-                  onChange={(event) => setMergePassword(event.target.value)}
-                  required
-                />
-              )}
-              <Button type="submit" variant="secondary" icon={<Link2 size={16} />}>
-                合并账号
-              </Button>
-            </div>
-          </form>
-          <form className="danger-row" onSubmit={deleteAccount}>
-            <div>
-              <strong>{t("dangerDelete")}</strong>
-              <span>账号和审计数据会永久保留并标记为已注销，但此账号将无法继续登录。</span>
-            </div>
-            <div className="danger-actions">
-              {profile.password_configured && (
-                <Input
-                  type="password"
-                  placeholder={t("currentPassword")}
-                  value={deletePassword}
-                  onChange={(event) => setDeletePassword(event.target.value)}
-                  required
-                />
-              )}
-              <Button
-                type="submit"
-                variant="danger"
-                icon={<Trash2 size={16} />}
-              >
-                {t("delete")}
-              </Button>
-            </div>
-          </form>
-        </Panel>
-      </div>
+        </form>
+      </Modal>
     </>
   );
 }
 type AdminUser = User & {
   email_count: number;
   identity_count: number;
+  binding_count: number;
   deactivated_at?: string;
   merged_into_user_id?: number;
   merge_sources?: AdminUser[];
+  password?: string;
 };
 
 function AdminUsersPage({
@@ -2411,186 +2878,548 @@ function AdminUsersPage({
 }: {
   show: (message: string, tone?: Toast["tone"]) => void;
 }) {
-  const [tab, setTab] = useState<"users" | "channels">("users");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
+  const [role, setRole] = useState("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [sort, setSort] = useState("id");
+  const [order, setOrder] = useState<"asc" | "desc">("asc");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState<AdminUser | null>(null);
-  const [channels, setChannels] = useState<
-    Array<{
-      kind: string;
-      display_name: string;
-      bindings: number;
-      active_bindings: number;
-      enabled?: boolean;
-    }>
-  >([]);
-  const [channelKind, setChannelKind] = useState("");
-  const [bindings, setBindings] = useState<Array<Record<string, any>>>([]);
-  const loadUsers = () =>
-    api<{ items: AdminUser[]; total: number }>(
-      `/api/admin/users?q=${encodeURIComponent(query)}&status=${status}`,
-    )
-      .then((data) => {
-        setUsers(data.items);
-        setTotal(data.total);
-      })
-      .catch((error) => show(error.message, "error"));
-  const loadChannels = () =>
-    api<typeof channels>("/api/admin/channels")
-      .then(setChannels)
-      .catch((error) => show(error.message, "error"));
+  const [checked, setChecked] = useState<number[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadUsers = async (nextPage = page) => {
+    setLoading(true);
+    try {
+      const data = await api<{ items: AdminUser[]; total: number }>(
+        `/api/admin/users?q=${encodeURIComponent(query)}&status=${status}&role=${role}&page=${nextPage}&page_size=${pageSize}&sort=${sort}&order=${order}`,
+      );
+      setUsers(data.items);
+      setTotal(data.total);
+      setChecked([]);
+    } catch (error) {
+      show(error instanceof Error ? error.message : "读取用户失败", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
   useEffect(() => {
     loadUsers();
-    loadChannels();
-  }, []);
+  }, [page, pageSize, sort, order, status, role]);
+
+  function changeSort(column: string) {
+    if (sort === column) setOrder(order === "asc" ? "desc" : "asc");
+    else {
+      setSort(column);
+      setOrder("asc");
+    }
+    setPage(1);
+  }
   async function openUser(id: number) {
     try {
       const data = await api<AdminUser>(`/api/admin/users/${id}`);
       setSelected({
         ...data,
-        emails: data.emails || [],
-        identities: data.identities || [],
+        bindings: data.bindings || [],
         merge_sources: data.merge_sources || [],
+        password: "",
       });
     } catch (error) {
-      show(error instanceof Error ? error.message : "读取失败", "error");
+      show(error instanceof Error ? error.message : "读取用户失败", "error");
     }
   }
-  async function saveUser() {
+  async function saveUser(event: FormEvent) {
+    event.preventDefault();
     if (!selected) return;
     try {
       await api(`/api/admin/users/${selected.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ role: selected.role, status: selected.status }),
+        body: JSON.stringify({
+          username: selected.username,
+          display_name: selected.display_name,
+          password: selected.password || "",
+          role: selected.role,
+          status: selected.status,
+        }),
       });
-      show("用户状态已更新", "success");
-      loadUsers();
-      openUser(selected.id);
+      show(`用户 ${selected.username} 已更新`, "success");
+      await loadUsers();
+      await openUser(selected.id);
     } catch (error) {
       show(error instanceof Error ? error.message : "保存失败", "error");
     }
   }
-  async function openChannel(kind: string) {
-    setChannelKind(kind);
-    try {
-      const data = await api<{ items: Array<Record<string, any>> }>(
-        `/api/admin/channels/${kind}/bindings?page_size=100`,
-      );
-      setBindings(data.items);
-    } catch (error) {
-      show(error instanceof Error ? error.message : "读取失败", "error");
-    }
-  }
-  async function disableBinding(id: number) {
-    if (!window.confirm("确认禁用这条登录绑定？记录仍会保留用于审计。")) return;
+  async function disableBinding(binding: UserBinding) {
+    if (
+      !window.confirm(
+        `确认禁用 ${binding.display_name} ${binding.identifier}？记录仍会保留用于审计。`,
+      )
+    )
+      return;
     try {
       await api(
-        `/api/admin/bindings/${channelKind === "email" ? "email" : "upstream"}/${id}`,
+        `/api/admin/bindings/${binding.binding_type}/${binding.binding_id}`,
         { method: "DELETE" },
       );
       show("绑定已禁用", "success");
-      openChannel(channelKind);
-      loadChannels();
+      if (selected) await openUser(selected.id);
+      await loadUsers();
     } catch (error) {
-      show(error instanceof Error ? error.message : "操作失败", "error");
+      show(error instanceof Error ? error.message : "禁用失败", "error");
     }
   }
+  async function resetMFA() {
+    if (!selected || !window.confirm(`确认重置 ${selected.username} 的 MFA？`))
+      return;
+    try {
+      await api(`/api/admin/users/${selected.id}/mfa`, { method: "DELETE" });
+      show("MFA 已重置", "success");
+      await openUser(selected.id);
+    } catch (error) {
+      show(error instanceof Error ? error.message : "重置失败", "error");
+    }
+  }
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const toggleAll = () =>
+    setChecked(
+      checked.length === users.length ? [] : users.map((item) => item.id),
+    );
+  const toggleOne = (id: number) =>
+    setChecked((items) =>
+      items.includes(id) ? items.filter((item) => item !== id) : [...items, id],
+    );
+  const statusLabel = (value: User["status"]) =>
+    value === "active" ? "已启用" : value === "merged" ? "已合并" : "已注销";
+  const SortHeader = ({
+    column,
+    children,
+  }: {
+    column: string;
+    children: ReactNode;
+  }) => (
+    <button className="sort-header" onClick={() => changeSort(column)}>
+      {children}
+      <ChevronDown size={13} className={sort === column ? order : ""} />
+    </button>
+  );
+
   return (
     <>
-      <PageHeader title="用户管理" description="查看用户、账号状态、合并来源和全部登录渠道绑定。" />
-      <div className="segmented-tabs">
-        <button className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}>用户</button>
-        <button className={tab === "channels" ? "active" : ""} onClick={() => setTab("channels")}>登录渠道</button>
-      </div>
-      {tab === "users" ? (
-        <div className="admin-grid">
-          <Panel
-            title={`全部用户 · ${total}`}
-            className="admin-list-panel"
-            action={
-              <div className="table-filters">
-                <Input placeholder="搜索用户名、邮箱或昵称" value={query} onChange={(event) => setQuery(event.target.value)} />
-                <Select value={status} onChange={(event) => setStatus(event.target.value)}>
-                  <option value="all">全部状态</option>
-                  <option value="active">正常</option>
-                  <option value="deactivated">已注销</option>
-                  <option value="merged">已合并</option>
-                </Select>
-                <Button variant="secondary" onClick={loadUsers} icon={<Search size={15} />}>查询</Button>
-              </div>
-            }
-          >
-            <Table
-              headers={["ID", "用户", "状态", "角色", "绑定", "最近登录", "操作"]}
-              rows={users.map((item) => [
-                `#${item.id}`,
-                <div key="user"><strong>{item.username}</strong><span className="table-subtitle">{item.email || "无主邮箱"}</span></div>,
-                <Badge key="status" tone={item.status === "active" ? "success" : "muted"}>{item.status === "active" ? "正常" : item.status === "merged" ? "已合并" : "已注销"}</Badge>,
-                item.role,
-                `${item.email_count} 邮箱 / ${item.identity_count} 第三方`,
-                formatDate(item.last_login_at),
-                <Button key="open" variant="ghost" onClick={() => openUser(item.id)}>查看</Button>,
-              ])}
-              empty="没有匹配的用户"
+      <PageHeader
+        title="用户管理"
+        description="管理账号状态、权限和全部登录身份绑定。"
+      />
+      <div className="data-table-shell">
+        <div className="data-table-toolbar">
+          <div className="table-search">
+            <Search size={15} />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  setPage(1);
+                  loadUsers(1);
+                }
+              }}
+              placeholder="按用户名、显示名称或邮箱筛选..."
             />
-          </Panel>
-          {selected && (
-            <Panel title={`用户 #${selected.id}`} className="admin-detail-panel">
-              <div className="form-stack">
-                <Input label="用户名" value={selected.username} disabled />
-                <Input label="主邮箱" value={selected.email || ""} disabled />
-                <Select label="角色" value={selected.role} onChange={(event) => setSelected({ ...selected, role: event.target.value as User["role"] })}>
-                  <option value="user">user</option>
-                  <option value="admin">admin</option>
-                </Select>
-                <Select label="状态" value={selected.status} disabled={selected.status === "merged"} onChange={(event) => setSelected({ ...selected, status: event.target.value as User["status"] })}>
-                  <option value="active">正常</option>
-                  <option value="deactivated">已注销</option>
-                  <option value="merged">已合并</option>
-                </Select>
-                {selected.merged_into_user_id && <div className="notice">已合并到用户 #{selected.merged_into_user_id}</div>}
-                <Button onClick={saveUser} icon={<Check size={15} />}>保存用户</Button>
-                <div className="binding-summary">
-                  <strong>邮箱绑定</strong>
-                  {selected.emails?.map((email) => <span key={email.id}>{email.email} · {email.disabled_at ? "已禁用" : email.primary ? "主邮箱" : "有效"} · 来源 #{email.original_user_id}</span>)}
-                </div>
-                <div className="binding-summary">
-                  <strong>第三方绑定</strong>
-                  {selected.identities?.map((identity) => <span key={identity.id}>{identity.provider.display_name} · {identity.external_name || identity.external_id} · 来源 #{identity.original_user_id}</span>)}
-                </div>
-                {(selected.merge_sources?.length || 0) > 0 && <div className="binding-summary"><strong>已并入的原账号</strong>{selected.merge_sources?.map((source) => <span key={source.id}>#{source.id} · {source.username}</span>)}</div>}
-              </div>
-            </Panel>
+          </div>
+          <Select
+            value={status}
+            onChange={(event) => {
+              setPage(1);
+              setStatus(event.target.value);
+            }}
+            aria-label="状态"
+          >
+            <option value="all">全部状态</option>
+            <option value="active">已启用</option>
+            <option value="deactivated">已注销</option>
+            <option value="merged">已合并</option>
+          </Select>
+          <Select
+            value={role}
+            onChange={(event) => {
+              setPage(1);
+              setRole(event.target.value);
+            }}
+            aria-label="角色"
+          >
+            <option value="all">全部角色</option>
+            <option value="user">用户</option>
+            <option value="admin">管理员</option>
+          </Select>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setPage(1);
+              loadUsers(1);
+            }}
+            icon={<Search size={15} />}
+          >
+            查询
+          </Button>
+        </div>
+        <div className="table-wrap admin-table-wrap">
+          <table className="admin-users-table">
+            <thead>
+              <tr>
+                <th>
+                  <input
+                    type="checkbox"
+                    checked={
+                      users.length > 0 && checked.length === users.length
+                    }
+                    onChange={toggleAll}
+                    aria-label="选择本页全部用户"
+                  />
+                </th>
+                <th>
+                  <SortHeader column="id">ID</SortHeader>
+                </th>
+                <th>
+                  <SortHeader column="username">用户名</SortHeader>
+                </th>
+                <th>
+                  <SortHeader column="status">状态</SortHeader>
+                </th>
+                <th>绑定</th>
+                <th>
+                  <SortHeader column="role">角色</SortHeader>
+                </th>
+                <th>
+                  <SortHeader column="created_at">创建时间</SortHeader>
+                </th>
+                <th>
+                  <SortHeader column="last_login_at">最后登录</SortHeader>
+                </th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((item) => (
+                <tr
+                  key={item.id}
+                  className={item.status !== "active" ? "disabled-row" : ""}
+                >
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={checked.includes(item.id)}
+                      onChange={() => toggleOne(item.id)}
+                      aria-label={`选择 ${item.username}`}
+                    />
+                  </td>
+                  <td>
+                    <code>{item.id}</code>
+                  </td>
+                  <td>
+                    <div className="admin-user-cell">
+                      <Avatar user={item} small />
+                      <div>
+                        <strong>{item.username}</strong>
+                        {item.display_name &&
+                          item.display_name !== item.username && (
+                            <span>{item.display_name}</span>
+                          )}
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <Badge
+                      tone={item.status === "active" ? "success" : "muted"}
+                    >
+                      {statusLabel(item.status)}
+                    </Badge>
+                  </td>
+                  <td>
+                    <div className="binding-count">
+                      <strong>{item.binding_count}</strong>
+                      <span>
+                        {item.email_count} 邮箱 · {item.identity_count} 第三方
+                      </span>
+                    </div>
+                  </td>
+                  <td>
+                    {item.role === "admin" ? (
+                      <>
+                        <Shield size={14} /> 管理员
+                      </>
+                    ) : (
+                      <>
+                        <UserCircle2 size={14} /> 用户
+                      </>
+                    )}
+                  </td>
+                  <td>{formatDate(item.created_at)}</td>
+                  <td>{formatDate(item.last_login_at)}</td>
+                  <td>
+                    <div className="row-actions">
+                      <button
+                        className="icon-button"
+                        onClick={() => openUser(item.id)}
+                        title="编辑用户"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        className="icon-button"
+                        onClick={() => openUser(item.id)}
+                        title="更多操作"
+                      >
+                        <MoreHorizontal size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!users.length && (
+            <Empty text={loading ? "正在加载用户..." : "没有匹配的用户"} />
           )}
         </div>
-      ) : (
-        <div className="admin-grid">
-          <Panel title="全部登录渠道" className="admin-list-panel">
-            <div className="channel-cards">
-              {channels.map((channel) => (
-                <button key={channel.kind} className={`channel-card ${channelKind === channel.kind ? "active" : ""}`} onClick={() => openChannel(channel.kind)}>
-                  <ProviderIcon kind={channel.kind} />
-                  <strong>{channel.display_name}</strong>
-                  <span>{channel.active_bindings} 有效 / {channel.bindings} 总计</span>
-                </button>
-              ))}
-            </div>
-          </Panel>
-          {channelKind && (
-            <Panel title={`${channels.find((item) => item.kind === channelKind)?.display_name || channelKind} 绑定`} className="admin-detail-panel">
-              <div className="binding-admin-list">
-                {bindings.map((binding) => (
-                  <div className="binding-admin-row" key={binding.id}>
-                    <div><strong>#{binding.id} · {binding.user?.username}</strong><span>{channelKind === "email" ? binding.email : `${binding.external_name || binding.external_id} · ${binding.external_email || "无邮箱"}`}</span><small>当前账号 #{binding.user?.id} · 原始账号 #{binding.original_user_id}</small></div>
-                    {binding.disabled_at ? <Badge tone="muted">已禁用</Badge> : <Button variant="danger" onClick={() => disableBinding(binding.id)}>禁用</Button>}
-                  </div>
-                ))}
-                {!bindings.length && <Empty text="暂无绑定" />}
+        <div className="data-table-footer">
+          <span>
+            共 {total} 个用户
+            {checked.length ? ` · 已选择 ${checked.length} 个` : ""}
+          </span>
+          <div>
+            <Select
+              value={pageSize}
+              onChange={(event) => {
+                setPage(1);
+                setPageSize(Number(event.target.value));
+              }}
+              aria-label="每页数量"
+            >
+              <option value={10}>10 / 页</option>
+              <option value={20}>20 / 页</option>
+              <option value={50}>50 / 页</option>
+            </Select>
+            <Button
+              variant="secondary"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+              icon={<ArrowLeft size={14} />}
+            >
+              上一页
+            </Button>
+            <span>
+              {page} / {pageCount}
+            </span>
+            <Button
+              variant="secondary"
+              disabled={page >= pageCount}
+              onClick={() => setPage(page + 1)}
+              icon={<ArrowRight size={14} />}
+            >
+              下一页
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {selected && (
+        <div className="drawer-backdrop" onMouseDown={() => setSelected(null)}>
+          <aside
+            className="side-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="更新用户"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="side-drawer-header">
+              <div>
+                <h2>更新用户</h2>
+                <p>通过必要信息更新用户。</p>
               </div>
-            </Panel>
-          )}
+              <button
+                className="icon-button"
+                onClick={() => setSelected(null)}
+                aria-label="关闭"
+              >
+                <X size={18} />
+              </button>
+            </header>
+            <form
+              id="admin-user-form"
+              onSubmit={saveUser}
+              className="side-drawer-form"
+            >
+              <section className="drawer-section">
+                <h3>基本信息</h3>
+                <Input
+                  label="用户名"
+                  value={selected.username}
+                  autoComplete="username"
+                  onChange={(event) =>
+                    setSelected({ ...selected, username: event.target.value })
+                  }
+                />
+                <Input
+                  label="显示名称"
+                  value={selected.display_name || ""}
+                  onChange={(event) =>
+                    setSelected({
+                      ...selected,
+                      display_name: event.target.value,
+                    })
+                  }
+                  hint="留空以使用用户名"
+                />
+                <Input
+                  label="密码"
+                  type="password"
+                  value={selected.password || ""}
+                  onChange={(event) =>
+                    setSelected({ ...selected, password: event.target.value })
+                  }
+                  placeholder="留空以保持不变"
+                  hint="设置后会撤销该用户的全部现有会话"
+                  autoComplete="new-password"
+                />
+              </section>
+              <section className="drawer-section">
+                <h3>权限与状态</h3>
+                <div className="form-grid-2">
+                  <Select
+                    label="角色"
+                    value={selected.role}
+                    onChange={(event) =>
+                      setSelected({
+                        ...selected,
+                        role: event.target.value as User["role"],
+                      })
+                    }
+                  >
+                    <option value="user">用户</option>
+                    <option value="admin">管理员</option>
+                  </Select>
+                  <Select
+                    label="状态"
+                    value={selected.status}
+                    disabled={selected.status === "merged"}
+                    onChange={(event) =>
+                      setSelected({
+                        ...selected,
+                        status: event.target.value as User["status"],
+                      })
+                    }
+                  >
+                    <option value="active">已启用</option>
+                    <option value="deactivated">已注销</option>
+                    <option value="merged">已合并</option>
+                  </Select>
+                </div>
+                {selected.merged_into_user_id && (
+                  <div className="notice">
+                    该原账号已合并到用户 #{selected.merged_into_user_id}
+                    ，仅保留用于审计。
+                  </div>
+                )}
+                <div className="setting-action-row compact">
+                  <div>
+                    <strong>二次验证</strong>
+                    <span>{selected.mfa_enabled ? "已启用" : "未启用"}</span>
+                  </div>
+                  {selected.mfa_enabled && (
+                    <Button variant="danger" onClick={resetMFA}>
+                      重置 MFA
+                    </Button>
+                  )}
+                </div>
+              </section>
+              <section className="drawer-section">
+                <h3>绑定信息</h3>
+                <p className="drawer-section-description">
+                  邮箱与第三方账号使用统一绑定模型；禁用后记录仍保留用于审计。
+                </p>
+                <div className="binding-list unified">
+                  {selected.bindings?.map((binding) => (
+                    <div
+                      className={`binding-record ${binding.disabled ? "disabled" : ""}`}
+                      key={`${binding.binding_type}-${binding.binding_id}`}
+                    >
+                      <ProviderIcon kind={binding.kind} />
+                      <div>
+                        <strong>
+                          {binding.display_name}{" "}
+                          <code>{binding.identifier}</code>
+                        </strong>
+                        <span>
+                          {[binding.account_name, binding.email]
+                            .filter(Boolean)
+                            .join(" · ") || "—"}
+                        </span>
+                        <small>
+                          来源账号 #{binding.original_user_id} · 绑定 #
+                          {binding.binding_id}
+                        </small>
+                      </div>
+                      <div className="binding-badges">
+                        {binding.primary && (
+                          <Badge tone="success">主绑定</Badge>
+                        )}
+                        <Badge
+                          tone={
+                            binding.disabled
+                              ? "muted"
+                              : binding.verified
+                                ? "success"
+                                : "warning"
+                          }
+                        >
+                          {binding.disabled
+                            ? "已禁用"
+                            : binding.verified
+                              ? "已验证"
+                              : "未验证"}
+                        </Badge>
+                        {!binding.disabled && (
+                          <button
+                            type="button"
+                            className="icon-button danger-icon"
+                            onClick={() => disableBinding(binding)}
+                            title="禁用绑定"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {!selected.bindings?.length && (
+                    <Empty text="该用户没有绑定记录" />
+                  )}
+                </div>
+              </section>
+              {(selected.merge_sources?.length || 0) > 0 && (
+                <section className="drawer-section">
+                  <h3>合并来源</h3>
+                  {selected.merge_sources?.map((source) => (
+                    <div className="merge-source" key={source.id}>
+                      <code>#{source.id}</code>
+                      <span>{source.username}</span>
+                      <Badge tone="muted">已合并</Badge>
+                    </div>
+                  ))}
+                </section>
+              )}
+            </form>
+            <footer className="side-drawer-footer">
+              <Button variant="secondary" onClick={() => setSelected(null)}>
+                关闭
+              </Button>
+              <Button type="submit" form="admin-user-form">
+                保存更改
+              </Button>
+            </footer>
+          </aside>
         </div>
       )}
     </>
@@ -2629,14 +3458,30 @@ type AdminProvider = {
   callback_url: string;
 };
 
-function AdminSettingsPage({ show }: { show: (message: string, tone?: Toast["tone"]) => void }) {
+function AdminSettingsPage({
+  show,
+}: {
+  show: (message: string, tone?: Toast["tone"]) => void;
+}) {
+  const [active, setActive] = useState<"basic" | "email" | "oauth" | "bot">(
+    "basic",
+  );
   const [settings, setSettings] = useState<AdminSettings | null>(null);
-  const [secrets, setSecrets] = useState({ smtp_password: "", turnstile_secret_key: "", cap_secret_key: "" });
+  const [secrets, setSecrets] = useState({
+    smtp_password: "",
+    turnstile_secret_key: "",
+    cap_secret_key: "",
+  });
   const [testEmail, setTestEmail] = useState("");
   const [providers, setProviders] = useState<AdminProvider[]>([]);
+  const [providerIndex, setProviderIndex] = useState(0);
   const load = () => {
-    api<AdminSettings>("/api/admin/settings").then(setSettings).catch((error) => show(error.message, "error"));
-    api<AdminProvider[]>("/api/admin/providers").then(setProviders).catch((error) => show(error.message, "error"));
+    api<AdminSettings>("/api/admin/settings")
+      .then(setSettings)
+      .catch((error) => show(error.message, "error"));
+    api<AdminProvider[]>("/api/admin/providers")
+      .then(setProviders)
+      .catch((error) => show(error.message, "error"));
   };
   useEffect(load, []);
   async function saveSettings(event: FormEvent) {
@@ -2653,10 +3498,19 @@ function AdminSettingsPage({ show }: { show: (message: string, tone?: Toast["ton
       cap_site_key: settings.cap_site_key,
       cap_server_url: settings.cap_server_url,
     };
-    Object.entries(secrets).forEach(([key, value]) => { if (value) payload[key] = value; });
+    Object.entries(secrets).forEach(([key, value]) => {
+      if (value) payload[key] = value;
+    });
     try {
-      await api("/api/admin/settings", { method: "PATCH", body: JSON.stringify(payload) });
-      setSecrets({ smtp_password: "", turnstile_secret_key: "", cap_secret_key: "" });
+      await api("/api/admin/settings", {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      setSecrets({
+        smtp_password: "",
+        turnstile_secret_key: "",
+        cap_secret_key: "",
+      });
       show("系统设置已保存", "success");
       load();
     } catch (error) {
@@ -2665,77 +3519,499 @@ function AdminSettingsPage({ show }: { show: (message: string, tone?: Toast["ton
   }
   async function sendTestEmail() {
     try {
-      await api("/api/admin/settings/email/test", { method: "POST", body: JSON.stringify({ email: testEmail }) });
+      await api("/api/admin/settings/email/test", {
+        method: "POST",
+        body: JSON.stringify({ email: testEmail }),
+      });
       show("测试邮件已发送", "success");
     } catch (error) {
       show(error instanceof Error ? error.message : "发送失败", "error");
     }
   }
-  function updateProvider(index: number, field: keyof AdminProvider, value: string | boolean) {
-    setProviders((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item));
+  function updateProvider(field: keyof AdminProvider, value: string | boolean) {
+    setProviders((items) =>
+      items.map((item, index) =>
+        index === providerIndex ? { ...item, [field]: value } : item,
+      ),
+    );
   }
-  async function saveProvider(index: number) {
-    const provider = providers[index];
+  async function saveProvider(event: FormEvent) {
+    event.preventDefault();
+    const provider = providers[providerIndex];
+    if (!provider) return;
     try {
-      await api(`/api/admin/providers/${provider.id}`, { method: "PATCH", body: JSON.stringify(provider) });
+      await api(`/api/admin/providers/${provider.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(provider),
+      });
       show(`${provider.display_name} 已保存`, "success");
       load();
     } catch (error) {
       show(error instanceof Error ? error.message : "保存失败", "error");
     }
   }
-  async function testProvider(provider: AdminProvider) {
+  async function testProvider() {
+    const provider = providers[providerIndex];
+    if (!provider) return;
     try {
-      await api(`/api/admin/providers/${provider.id}/test`, { method: "POST", body: "{}" });
+      await api(`/api/admin/providers/${provider.id}/test`, {
+        method: "POST",
+        body: "{}",
+      });
       show(`${provider.display_name} 配置可用`, "success");
     } catch (error) {
       show(error instanceof Error ? error.message : "测试失败", "error");
     }
   }
-  if (!settings) return <div className="loading-screen"><span>加载设置…</span></div>;
+  if (!settings)
+    return (
+      <div className="loading-screen">
+        <span>加载设置...</span>
+      </div>
+    );
+  const provider = providers[providerIndex];
+  const nav = [
+    { id: "basic", label: "基本身份验证", icon: KeyRound },
+    { id: "email", label: "邮件服务", icon: Send },
+    { id: "oauth", label: "OAuth 集成", icon: Link2 },
+    { id: "bot", label: "机器人保护", icon: ShieldCheck },
+  ] as const;
   return (
     <>
-      <PageHeader title="系统设置" description="集中配置注册、邮件、人机验证和第三方登录 Provider。未启用的登录方式不会出现在客户页面。" />
-      {settings.email_debug && <div className="notice warning">当前启用了邮件调试模式，验证码会显示在浏览器响应中。生产环境必须设置 SSO_EMAIL_DEBUG=false。</div>}
-      <form className="settings-grid" onSubmit={saveSettings}>
-        <Panel title="注册与邮件" description="注册必须完成邮箱验证码校验。">
-          <label className="toggle-row"><input type="checkbox" checked={settings.registration_enabled} onChange={(event) => setSettings({ ...settings, registration_enabled: event.target.checked })} /><span>允许新用户注册</span></label>
-          <div className="form-grid-2">
-            <Input label="SMTP 主机" value={settings.smtp_host} onChange={(event) => setSettings({ ...settings, smtp_host: event.target.value })} />
-            <Input label="SMTP 端口" value={settings.smtp_port} onChange={(event) => setSettings({ ...settings, smtp_port: event.target.value })} />
-            <Input label="SMTP 用户名" value={settings.smtp_username} onChange={(event) => setSettings({ ...settings, smtp_username: event.target.value })} />
-            <Input label="SMTP 密码" type="password" value={secrets.smtp_password} placeholder={settings.smtp_password_configured ? "已配置，留空不修改" : "请输入密码"} onChange={(event) => setSecrets({ ...secrets, smtp_password: event.target.value })} />
-            <Input label="发件人" value={settings.smtp_from} onChange={(event) => setSettings({ ...settings, smtp_from: event.target.value })} />
-            <div className="field"><span>发送测试邮件</span><div className="inline-form"><input type="email" value={testEmail} onChange={(event) => setTestEmail(event.target.value)} placeholder="admin@example.com" /><Button variant="secondary" onClick={sendTestEmail}>测试</Button></div></div>
+      <PageHeader
+        title="系统设置"
+        description="按 new-api 的管理结构配置身份认证服务。未启用或未完整配置的登录方式不会展示给客户。"
+      />
+      {settings.email_debug && (
+        <div className="notice warning settings-debug-notice">
+          当前启用了邮件调试模式，生产环境必须设置{" "}
+          <code>SSO_EMAIL_DEBUG=false</code>。
+        </div>
+      )}
+      <div className="system-settings-layout">
+        <aside className="system-settings-nav">
+          <div className="settings-back">
+            <ArrowLeft size={14} />
+            返回控制台
           </div>
-        </Panel>
-        <Panel title="人机验证" description="接口按模式抽象，后续可继续增加新的实现。">
-          <Select label="验证模式" value={settings.captcha_mode} onChange={(event) => setSettings({ ...settings, captcha_mode: event.target.value as AdminSettings["captcha_mode"] })}>
-            <option value="none">无</option><option value="turnstile">Cloudflare Turnstile</option><option value="cap">Cap Proof of Work</option>
-          </Select>
-          {settings.captcha_mode === "turnstile" && <div className="form-grid-2"><Input label="Site Key" value={settings.turnstile_site_key} onChange={(event) => setSettings({ ...settings, turnstile_site_key: event.target.value })} /><Input label="Secret Key" type="password" value={secrets.turnstile_secret_key} placeholder={settings.turnstile_secret_configured ? "已配置，留空不修改" : "请输入 Secret Key"} onChange={(event) => setSecrets({ ...secrets, turnstile_secret_key: event.target.value })} /></div>}
-          {settings.captcha_mode === "cap" && <div className="form-grid-2"><Input label="Cap 服务地址" value={settings.cap_server_url} onChange={(event) => setSettings({ ...settings, cap_server_url: event.target.value })} /><Input label="Site Key" value={settings.cap_site_key} onChange={(event) => setSettings({ ...settings, cap_site_key: event.target.value })} /><Input label="Secret Key" type="password" value={secrets.cap_secret_key} placeholder={settings.cap_secret_configured ? "已配置，留空不修改" : "请输入 Secret Key"} onChange={(event) => setSecrets({ ...secrets, cap_secret_key: event.target.value })} /></div>}
-          <div className="panel-footer"><Button type="submit" icon={<Check size={16} />}>保存系统设置</Button></div>
-        </Panel>
-      </form>
-      <div className="provider-settings-list">
-        {providers.map((provider, index) => (
-          <Panel key={provider.id} title={provider.display_name} description={`${provider.kind} · 回调地址 ${provider.callback_url}`} action={<label className="toggle-row compact"><input type="checkbox" checked={provider.enabled} onChange={(event) => updateProvider(index, "enabled", event.target.checked)} /><span>启用</span></label>}>
-            <div className="form-grid-2">
-              <Input label="显示名称" value={provider.display_name} onChange={(event) => updateProvider(index, "display_name", event.target.value)} />
-              <Input label="Client ID / App ID" value={provider.client_id} onChange={(event) => updateProvider(index, "client_id", event.target.value)} />
-              <Input label="Client Secret / Bot Token" type="password" value={provider.client_secret || ""} placeholder={provider.secret_configured ? "已配置，留空不修改" : "请输入密钥"} onChange={(event) => updateProvider(index, "client_secret", event.target.value)} />
-              <Input label="Scopes" value={provider.scopes || ""} onChange={(event) => updateProvider(index, "scopes", event.target.value)} />
-              <Input label="Issuer URL" value={provider.issuer_url || ""} onChange={(event) => updateProvider(index, "issuer_url", event.target.value)} />
-              <Input label="Authorization URL" value={provider.authorization_url || ""} onChange={(event) => updateProvider(index, "authorization_url", event.target.value)} />
-              <Input label="Token URL" value={provider.token_url || ""} onChange={(event) => updateProvider(index, "token_url", event.target.value)} />
-              <Input label="UserInfo URL" value={provider.user_info_url || ""} onChange={(event) => updateProvider(index, "user_info_url", event.target.value)} />
-              <Input label="Email API URL" value={provider.email_info_url || ""} onChange={(event) => updateProvider(index, "email_info_url", event.target.value)} />
-              <Input label="回调地址" value={provider.callback_url} readOnly />
-            </div>
-            <div className="panel-footer"><Button variant="secondary" onClick={() => testProvider(provider)} icon={<Activity size={15} />}>连接测试</Button><Button onClick={() => saveProvider(index)} icon={<Check size={15} />}>保存 Provider</Button></div>
-          </Panel>
-        ))}
+          <div className="settings-nav-group">
+            <span>身份验证</span>
+            {nav.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  className={active === item.id ? "active" : ""}
+                  onClick={() => setActive(item.id)}
+                >
+                  <Icon size={16} />
+                  {item.label}
+                  <ArrowRight size={14} />
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+        <section className="system-settings-content">
+          {active === "basic" && (
+            <form onSubmit={saveSettings}>
+              <div className="section-heading">
+                <div>
+                  <h2>基本身份验证</h2>
+                  <p>控制本地用户名、密码和注册流程。</p>
+                </div>
+              </div>
+              <div className="settings-form-body">
+                <label className="setting-toggle">
+                  <div>
+                    <strong>允许新用户注册</strong>
+                    <span>
+                      关闭后仍允许已有账号登录以及管理员配置的第三方身份登录。
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.registration_enabled}
+                    onChange={(event) =>
+                      setSettings({
+                        ...settings,
+                        registration_enabled: event.target.checked,
+                      })
+                    }
+                  />
+                </label>
+                <div className="setting-action-row">
+                  <div>
+                    <strong>注册邮箱验证</strong>
+                    <span>注册流程必须完成邮箱验证码，当前不可关闭。</span>
+                  </div>
+                  <Badge tone="success">强制启用</Badge>
+                </div>
+                <div className="setting-action-row">
+                  <div>
+                    <strong>账号识别</strong>
+                    <span>
+                      第一页支持用户名或邮箱；登录和注册在识别后分流。
+                    </span>
+                  </div>
+                  <Badge tone="success">已启用</Badge>
+                </div>
+                <div className="settings-action-bar">
+                  <Button type="submit" icon={<Check size={15} />}>
+                    保存更改
+                  </Button>
+                </div>
+              </div>
+            </form>
+          )}
+          {active === "email" && (
+            <form onSubmit={saveSettings}>
+              <div className="section-heading">
+                <div>
+                  <h2>邮件服务</h2>
+                  <p>用于注册、换绑邮箱和安全提醒。</p>
+                </div>
+              </div>
+              <div className="settings-form-body">
+                <div className="form-grid-2">
+                  <Input
+                    label="SMTP 主机"
+                    value={settings.smtp_host}
+                    onChange={(event) =>
+                      setSettings({
+                        ...settings,
+                        smtp_host: event.target.value,
+                      })
+                    }
+                  />
+                  <Input
+                    label="SMTP 端口"
+                    value={settings.smtp_port}
+                    onChange={(event) =>
+                      setSettings({
+                        ...settings,
+                        smtp_port: event.target.value,
+                      })
+                    }
+                  />
+                  <Input
+                    label="SMTP 用户名"
+                    value={settings.smtp_username}
+                    onChange={(event) =>
+                      setSettings({
+                        ...settings,
+                        smtp_username: event.target.value,
+                      })
+                    }
+                  />
+                  <Input
+                    label="SMTP 密码"
+                    type="password"
+                    value={secrets.smtp_password}
+                    placeholder={
+                      settings.smtp_password_configured
+                        ? "已配置，留空不修改"
+                        : "请输入密码"
+                    }
+                    onChange={(event) =>
+                      setSecrets({
+                        ...secrets,
+                        smtp_password: event.target.value,
+                      })
+                    }
+                    autoComplete="new-password"
+                  />
+                  <Input
+                    label="发件人"
+                    value={settings.smtp_from}
+                    onChange={(event) =>
+                      setSettings({
+                        ...settings,
+                        smtp_from: event.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="setting-action-row">
+                  <div>
+                    <strong>发送测试邮件</strong>
+                    <span>使用当前已保存配置发送测试邮件。</span>
+                  </div>
+                  <div className="inline-control">
+                    <input
+                      type="email"
+                      value={testEmail}
+                      onChange={(event) => setTestEmail(event.target.value)}
+                      placeholder="admin@example.com"
+                    />
+                    <Button variant="secondary" onClick={sendTestEmail}>
+                      发送测试
+                    </Button>
+                  </div>
+                </div>
+                <div className="settings-action-bar">
+                  <Button type="submit" icon={<Check size={15} />}>
+                    保存邮件设置
+                  </Button>
+                </div>
+              </div>
+            </form>
+          )}
+          {active === "bot" && (
+            <form onSubmit={saveSettings}>
+              <div className="section-heading">
+                <div>
+                  <h2>机器人保护</h2>
+                  <p>在登录注册流程第一页验证客户端。</p>
+                </div>
+              </div>
+              <div className="settings-form-body">
+                <Select
+                  label="验证模式"
+                  value={settings.captcha_mode}
+                  onChange={(event) =>
+                    setSettings({
+                      ...settings,
+                      captcha_mode: event.target
+                        .value as AdminSettings["captcha_mode"],
+                    })
+                  }
+                >
+                  <option value="none">无</option>
+                  <option value="turnstile">Cloudflare Turnstile</option>
+                  <option value="cap">Cap Proof of Work</option>
+                </Select>
+                {settings.captcha_mode === "turnstile" && (
+                  <div className="form-grid-2">
+                    <Input
+                      label="Site Key"
+                      value={settings.turnstile_site_key}
+                      onChange={(event) =>
+                        setSettings({
+                          ...settings,
+                          turnstile_site_key: event.target.value,
+                        })
+                      }
+                    />
+                    <Input
+                      label="Secret Key"
+                      type="password"
+                      value={secrets.turnstile_secret_key}
+                      placeholder={
+                        settings.turnstile_secret_configured
+                          ? "已配置，留空不修改"
+                          : "请输入 Secret Key"
+                      }
+                      onChange={(event) =>
+                        setSecrets({
+                          ...secrets,
+                          turnstile_secret_key: event.target.value,
+                        })
+                      }
+                      autoComplete="new-password"
+                    />
+                  </div>
+                )}
+                {settings.captcha_mode === "cap" && (
+                  <div className="form-grid-2">
+                    <Input
+                      label="Cap 服务地址"
+                      value={settings.cap_server_url}
+                      onChange={(event) =>
+                        setSettings({
+                          ...settings,
+                          cap_server_url: event.target.value,
+                        })
+                      }
+                    />
+                    <Input
+                      label="Site Key"
+                      value={settings.cap_site_key}
+                      onChange={(event) =>
+                        setSettings({
+                          ...settings,
+                          cap_site_key: event.target.value,
+                        })
+                      }
+                    />
+                    <Input
+                      label="Secret Key"
+                      type="password"
+                      value={secrets.cap_secret_key}
+                      placeholder={
+                        settings.cap_secret_configured
+                          ? "已配置，留空不修改"
+                          : "请输入 Secret Key"
+                      }
+                      onChange={(event) =>
+                        setSecrets({
+                          ...secrets,
+                          cap_secret_key: event.target.value,
+                        })
+                      }
+                      autoComplete="new-password"
+                    />
+                  </div>
+                )}
+                <div className="settings-action-bar">
+                  <Button type="submit" icon={<Check size={15} />}>
+                    保存机器人保护设置
+                  </Button>
+                </div>
+              </div>
+            </form>
+          )}
+          {active === "oauth" && (
+            <>
+              <div className="section-heading">
+                <div>
+                  <h2>OAuth 集成</h2>
+                  <p>配置可用于客户登录和绑定的上游身份提供商。</p>
+                </div>
+              </div>
+              {provider ? (
+                <div className="oauth-settings-grid">
+                  <div className="oauth-provider-list">
+                    {providers.map((item, index) => (
+                      <button
+                        key={item.id}
+                        className={providerIndex === index ? "active" : ""}
+                        onClick={() => setProviderIndex(index)}
+                      >
+                        <ProviderIcon kind={item.kind} />
+                        <div>
+                          <strong>{item.display_name}</strong>
+                          <span>
+                            {item.enabled
+                              ? "已启用"
+                              : item.secret_configured
+                                ? "已配置"
+                                : "未配置"}
+                          </span>
+                        </div>
+                        <Badge tone={item.enabled ? "success" : "muted"}>
+                          {item.enabled ? "启用" : "停用"}
+                        </Badge>
+                      </button>
+                    ))}
+                  </div>
+                  <form className="oauth-provider-form" onSubmit={saveProvider}>
+                    <div className="provider-form-heading">
+                      <div>
+                        <ProviderIcon kind={provider.kind} />
+                        <div>
+                          <h3>{provider.display_name}</h3>
+                          <span>{provider.kind}</span>
+                        </div>
+                      </div>
+                      <label className="toggle-row compact">
+                        <input
+                          type="checkbox"
+                          checked={provider.enabled}
+                          onChange={(event) =>
+                            updateProvider("enabled", event.target.checked)
+                          }
+                        />
+                        <span>启用</span>
+                      </label>
+                    </div>
+                    <Input
+                      label="显示名称"
+                      value={provider.display_name}
+                      onChange={(event) =>
+                        updateProvider("display_name", event.target.value)
+                      }
+                    />
+                    <div className="form-grid-2">
+                      <Input
+                        label="Client ID / App ID"
+                        value={provider.client_id}
+                        onChange={(event) =>
+                          updateProvider("client_id", event.target.value)
+                        }
+                      />
+                      <Input
+                        label="Client Secret / Bot Token"
+                        type="password"
+                        value={provider.client_secret || ""}
+                        placeholder={
+                          provider.secret_configured
+                            ? "已配置，留空不修改"
+                            : "请输入密钥"
+                        }
+                        onChange={(event) =>
+                          updateProvider("client_secret", event.target.value)
+                        }
+                        autoComplete="new-password"
+                      />
+                    </div>
+                    <Input
+                      label="Scopes"
+                      value={provider.scopes || ""}
+                      onChange={(event) =>
+                        updateProvider("scopes", event.target.value)
+                      }
+                    />
+                    <Input
+                      label="Issuer URL"
+                      value={provider.issuer_url || ""}
+                      onChange={(event) =>
+                        updateProvider("issuer_url", event.target.value)
+                      }
+                    />
+                    <Input
+                      label="Authorization URL"
+                      value={provider.authorization_url || ""}
+                      onChange={(event) =>
+                        updateProvider("authorization_url", event.target.value)
+                      }
+                    />
+                    <Input
+                      label="Token URL"
+                      value={provider.token_url || ""}
+                      onChange={(event) =>
+                        updateProvider("token_url", event.target.value)
+                      }
+                    />
+                    <Input
+                      label="UserInfo URL"
+                      value={provider.user_info_url || ""}
+                      onChange={(event) =>
+                        updateProvider("user_info_url", event.target.value)
+                      }
+                    />
+                    <Input
+                      label="Email API URL"
+                      value={provider.email_info_url || ""}
+                      onChange={(event) =>
+                        updateProvider("email_info_url", event.target.value)
+                      }
+                    />
+                    <Input
+                      label="回调地址"
+                      value={provider.callback_url}
+                      readOnly
+                    />
+                    <div className="settings-action-bar">
+                      <Button
+                        variant="secondary"
+                        onClick={testProvider}
+                        icon={<Activity size={15} />}
+                      >
+                        连接测试
+                      </Button>
+                      <Button type="submit" icon={<Check size={15} />}>
+                        保存 Provider
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              ) : (
+                <Empty text="暂无可配置的 OAuth Provider" />
+              )}
+            </>
+          )}
+        </section>
       </div>
     </>
   );

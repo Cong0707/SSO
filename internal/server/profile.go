@@ -27,6 +27,7 @@ func (s *Server) profile(c *gin.Context) {
 	data := publicUser(user)
 	data["emails"] = emails
 	data["identities"] = identities
+	data["bindings"] = s.userBindingViews(user.ID, false)
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }
 

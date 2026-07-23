@@ -47,8 +47,17 @@ func (s *Server) adminListUsers(c *gin.Context) {
 		s.serveError(c, http.StatusInternalServerError, "读取用户数量失败")
 		return
 	}
+	sortColumns := map[string]string{"id": "id", "username": "username", "status": "status", "role": "role", "created_at": "created_at", "last_login_at": "last_login_at"}
+	sortColumn := sortColumns[c.DefaultQuery("sort", "id")]
+	if sortColumn == "" {
+		sortColumn = "id"
+	}
+	sortOrder := strings.ToUpper(c.DefaultQuery("order", "ASC"))
+	if sortOrder != "DESC" {
+		sortOrder = "ASC"
+	}
 	var users []model.User
-	if err := query.Order("id ASC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&users).Error; err != nil {
+	if err := query.Order(sortColumn + " " + sortOrder).Offset((page - 1) * pageSize).Limit(pageSize).Find(&users).Error; err != nil {
 		s.serveError(c, http.StatusInternalServerError, "读取用户列表失败")
 		return
 	}
@@ -60,6 +69,7 @@ func (s *Server) adminListUsers(c *gin.Context) {
 		item := publicUser(&users[index])
 		item["email_count"] = emailCount
 		item["identity_count"] = identityCount
+		item["binding_count"] = emailCount + identityCount
 		item["deactivated_at"] = users[index].DeactivatedAt
 		item["merged_into_user_id"] = users[index].MergedIntoUserID
 		items = append(items, item)
@@ -86,6 +96,7 @@ func (s *Server) adminGetUser(c *gin.Context) {
 	data := publicUser(&user)
 	data["emails"] = emails
 	data["identities"] = identities
+	data["bindings"] = s.userBindingViews(user.ID, true)
 	data["merge_sources"] = mergeSources
 	data["deactivated_at"] = user.DeactivatedAt
 	data["merged_into_user_id"] = user.MergedIntoUserID
@@ -99,8 +110,11 @@ func (s *Server) adminUpdateUser(c *gin.Context) {
 		return
 	}
 	var input struct {
-		Role   *string `json:"role"`
-		Status *string `json:"status"`
+		Username    *string `json:"username"`
+		DisplayName *string `json:"display_name"`
+		Password    *string `json:"password"`
+		Role        *string `json:"role"`
+		Status      *string `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		s.serveError(c, http.StatusBadRequest, "请求格式错误")
@@ -112,6 +126,35 @@ func (s *Server) adminUpdateUser(c *gin.Context) {
 		return
 	}
 	updates := map[string]any{}
+	if input.Username != nil {
+		username := strings.TrimSpace(*input.Username)
+		if !usernamePattern.MatchString(username) {
+			s.serveError(c, http.StatusBadRequest, "用户名需为 3-32 位字母、数字、下划线或连字符")
+			return
+		}
+		updates["username"] = username
+	}
+	if input.DisplayName != nil {
+		displayName := strings.TrimSpace(*input.DisplayName)
+		if len(displayName) > 100 {
+			s.serveError(c, http.StatusBadRequest, "显示名称不能超过 100 个字符")
+			return
+		}
+		updates["display_name"] = displayName
+	}
+	if input.Password != nil && *input.Password != "" {
+		if message := validatePassword(*input.Password); message != "" {
+			s.serveError(c, http.StatusBadRequest, message)
+			return
+		}
+		hash, hashErr := security.HashPassword(*input.Password)
+		if hashErr != nil {
+			s.serveError(c, http.StatusInternalServerError, "密码处理失败")
+			return
+		}
+		updates["password_hash"] = hash
+		updates["password_configured"] = true
+	}
 	if input.Role != nil {
 		if *input.Role != "user" && *input.Role != "admin" {
 			s.serveError(c, http.StatusBadRequest, "角色无效")
@@ -154,11 +197,102 @@ func (s *Server) adminUpdateUser(c *gin.Context) {
 		s.serveError(c, http.StatusBadRequest, "没有可更新的字段")
 		return
 	}
-	if err := s.DB.Model(&user).Updates(updates).Error; err != nil {
+	err = s.DB.Transaction(func(tx *gorm.DB) error {
+		if updateErr := tx.Model(&user).Updates(updates).Error; updateErr != nil {
+			return updateErr
+		}
+		if input.Password != nil && *input.Password != "" {
+			now := time.Now()
+			return tx.Model(&model.Session{}).Where("user_id = ? AND revoked_at IS NULL", user.ID).Update("revoked_at", &now).Error
+		}
+		return nil
+	})
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") || strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+			s.serveError(c, http.StatusConflict, "用户名已被使用")
+			return
+		}
 		s.serveError(c, http.StatusInternalServerError, "更新用户失败")
 		return
 	}
 	s.audit(c, "admin.user_updated", s.user(c).ID, fmt.Sprintf("target_user_id=%d", user.ID))
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+type userBindingView struct {
+	Kind           string     `json:"kind"`
+	DisplayName    string     `json:"display_name"`
+	Identifier     string     `json:"identifier"`
+	AccountName    string     `json:"account_name,omitempty"`
+	Email          string     `json:"email,omitempty"`
+	BindingType    string     `json:"binding_type"`
+	BindingID      uint64     `json:"binding_id"`
+	OriginalUserID uint64     `json:"original_user_id"`
+	Primary        bool       `json:"primary"`
+	Verified       bool       `json:"verified"`
+	Disabled       bool       `json:"disabled"`
+	CreatedAt      time.Time  `json:"created_at"`
+	LastLoginAt    *time.Time `json:"last_login_at,omitempty"`
+}
+
+func (s *Server) userBindingViews(userID uint64, includeDisabled bool) []userBindingView {
+	items := make([]userBindingView, 0)
+	emailQuery := s.DB.Where("user_id = ?", userID)
+	identityQuery := s.DB.Preload("Provider").Where("user_id = ?", userID)
+	if !includeDisabled {
+		emailQuery = emailQuery.Where("disabled_at IS NULL")
+		identityQuery = identityQuery.Where("disabled_at IS NULL")
+	}
+	var emails []model.UserEmail
+	_ = emailQuery.Order("id ASC").Find(&emails).Error
+	for _, email := range emails {
+		items = append(items, userBindingView{
+			Kind: "email", DisplayName: "邮箱", Identifier: email.Email, BindingType: "email", BindingID: email.ID,
+			OriginalUserID: email.OriginalUserID, Primary: email.Primary, Verified: email.VerifiedAt != nil,
+			Disabled: email.DisabledAt != nil, CreatedAt: email.CreatedAt,
+		})
+	}
+	var identities []model.UpstreamIdentity
+	_ = identityQuery.Order("id ASC").Find(&identities).Error
+	for _, identity := range identities {
+		var lastLoginAt *time.Time
+		if !identity.LastLoginAt.IsZero() {
+			value := identity.LastLoginAt
+			lastLoginAt = &value
+		}
+		items = append(items, userBindingView{
+			Kind: identity.Provider.Kind, DisplayName: identity.Provider.DisplayName, Identifier: identity.ExternalID,
+			AccountName: identity.ExternalName, Email: identity.ExternalEmail, BindingType: "upstream", BindingID: identity.ID,
+			OriginalUserID: identity.OriginalUserID, Verified: identity.VerifiedAt != nil, Disabled: identity.DisabledAt != nil,
+			CreatedAt: identity.CreatedAt, LastLoginAt: lastLoginAt,
+		})
+	}
+	return items
+}
+
+func (s *Server) adminResetMFA(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		s.serveError(c, http.StatusBadRequest, "用户编号无效")
+		return
+	}
+	var user model.User
+	if s.DB.First(&user, id).Error != nil {
+		s.serveError(c, http.StatusNotFound, "用户不存在")
+		return
+	}
+	err = s.DB.Transaction(func(tx *gorm.DB) error {
+		if updateErr := tx.Model(&user).Updates(map[string]any{"mfa_enabled": false, "mfa_secret_encrypted": "", "mfa_backup_code_hashes": "[]"}).Error; updateErr != nil {
+			return updateErr
+		}
+		now := time.Now()
+		return tx.Model(&model.Session{}).Where("user_id = ? AND revoked_at IS NULL", user.ID).Update("revoked_at", &now).Error
+	})
+	if err != nil {
+		s.serveError(c, http.StatusInternalServerError, "重置 MFA 失败")
+		return
+	}
+	s.audit(c, "admin.mfa_reset", s.user(c).ID, fmt.Sprintf("target_user_id=%d", user.ID))
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 

@@ -17,6 +17,9 @@
 - 第三方新账号不会仅凭“相同邮箱”静默并入现有账号，必须由用户明确发起账号合并。
 - Provider 和 SMTP Secret 只允许覆盖写入，管理员 API 只返回 `*_configured` 状态，不返回明文。
 - 系统设置和用户管理均要求浏览器 Session、管理员角色；状态变更继续要求 CSRF。
+- 管理员编辑用户名、显示名称、角色、状态和重置密码均经过服务端白名单校验；密码使用统一强哈希函数，密码更新与目标用户全部会话撤销处于同一数据库事务。
+- 管理员重置 MFA 和禁用邮箱/OAuth 绑定均要求管理员 Session 与 CSRF；MFA 重置与目标会话撤销处于同一事务，操作写入审计事件，身份记录只禁用不删除。
+- 管理员用户详情的统一绑定接口只返回渠道、外部标识、来源账号和状态，不返回 OAuth token、Provider Secret、MFA Secret 或密码摘要。
 - 最后一个有效管理员不能被降级；管理员不能在当前会话中注销自己；已合并原账号不能重新启用。
 - Turnstile 使用 Cloudflare `siteverify`；Cap 使用独立 `siteverify`。Cap 代理只允许 GET/POST 且路径必须位于当前 Site Key 下，避免形成通用反向代理。
 - 未配置或未启用的 Provider 不进入公开接口；Cap 前端代码仅在模式启用后动态加载。
@@ -60,6 +63,7 @@ master key 尚未支持多版本解密和在线重新加密；OIDC signing key �
 - `npm audit --omit=dev`：0 vulnerabilities
 - 使用 PyYAML 解析 `docker-compose.yml` 和全部 Kubernetes YAML：通过
 - 浏览器：完成三页式首个管理员注册，验证码页、管理员菜单、系统设置、用户详情和移动端 390x844 布局均通过。
+- 浏览器：验证 new-api 风格密集用户表、用户编辑抽屉、统一绑定列表、设置左侧分栏、密码弹窗和 MFA 二维码弹窗；MFA 验收后已重置临时密钥。
 - 浏览器：公开认证页在 `captcha_mode=none` 且 Provider 未配置时不显示未完成的登录项，Cap chunk 未加载。
 
 当前机器未安装 Docker 和 kubectl，因此未执行镜像构建、Compose 启动和 `kubectl apply --dry-run`。这些步骤需在 CI 或具备相应工具的部署机继续验证。

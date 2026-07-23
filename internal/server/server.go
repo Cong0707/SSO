@@ -179,6 +179,7 @@ func (s *Server) Router() *gin.Engine {
 	admin.GET("/users", s.adminListUsers)
 	admin.GET("/users/:id", s.adminGetUser)
 	admin.PATCH("/users/:id", s.requireCSRF, s.adminUpdateUser)
+	admin.DELETE("/users/:id/mfa", s.requireCSRF, s.adminResetMFA)
 	admin.GET("/channels", s.adminListChannels)
 	admin.GET("/channels/:kind/bindings", s.adminListChannelBindings)
 	admin.DELETE("/bindings/email/:id", s.requireCSRF, s.adminDisableEmailBinding)
