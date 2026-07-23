@@ -98,7 +98,7 @@ func seedProviders(db *gorm.DB, cfg config.Config) error {
 
 func (s *Server) listProviders(c *gin.Context) {
 	var providers []model.UpstreamProvider
-	if err := s.DB.Order("id ASC").Find(&providers).Error; err != nil {
+	if err := s.DB.Where("enabled = ? AND disabled_at IS NULL", true).Order("id ASC").Find(&providers).Error; err != nil {
 		s.serveError(c, http.StatusInternalServerError, "读取上游接入商失败")
 		return
 	}
@@ -114,6 +114,9 @@ func (s *Server) listProviders(c *gin.Context) {
 	}
 	items := make([]gin.H, 0, len(providers))
 	for _, provider := range providers {
+		if !providerConfigured(provider) || provider.Kind == "telegram" {
+			continue
+		}
 		items = append(items, gin.H{
 			"id": provider.ID, "kind": provider.Kind, "display_name": provider.DisplayName,
 			"enabled": provider.Enabled, "configured": providerConfigured(provider), "bound": bound[provider.ID],

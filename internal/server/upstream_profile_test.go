@@ -3,6 +3,9 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +14,7 @@ import (
 	"github.com/Cong0707/sso/internal/config"
 	"github.com/Cong0707/sso/internal/model"
 	"github.com/Cong0707/sso/internal/upstream"
+	"github.com/gin-gonic/gin"
 	oauthModels "github.com/go-oauth2/oauth2/v4/models"
 	"gorm.io/gorm"
 )
@@ -104,6 +108,35 @@ func TestDatabaseTokenStoreEncryptsPayloadAndSharesLookupState(t *testing.T) {
 	loaded, err = store.GetByAccess(context.Background(), "access-secret")
 	if err != nil || loaded != nil {
 		t.Fatalf("token should have been removed: info=%#v err=%v", loaded, err)
+	}
+}
+
+func TestProviderListHidesDisabledIncompleteAndUnavailableProviders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := openTestDatabase(t)
+	providers := []model.UpstreamProvider{
+		{Kind: "github", DisplayName: "GitHub", ClientID: "client", ClientSecretEncrypted: "encrypted", Enabled: true},
+		{Kind: "discord", DisplayName: "Discord", ClientID: "client", ClientSecretEncrypted: "encrypted", Enabled: false},
+		{Kind: "oidc", DisplayName: "OIDC", ClientID: "client", Enabled: true},
+		{Kind: "telegram", DisplayName: "Telegram", ClientSecretEncrypted: "encrypted", Enabled: true},
+	}
+	if err := db.Create(&providers).Error; err != nil {
+		t.Fatalf("create providers: %v", err)
+	}
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/providers", nil)
+	(&Server{DB: db}).listProviders(ctx)
+	var response struct {
+		Data []struct {
+			Kind string `json:"kind"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode provider response: %v", err)
+	}
+	if recorder.Code != http.StatusOK || len(response.Data) != 1 || response.Data[0].Kind != "github" {
+		t.Fatalf("unexpected public provider list: status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 

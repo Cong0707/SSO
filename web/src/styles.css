@@ -680,14 +680,6 @@ code {
   color: var(--muted);
   font-size: 10px;
 }
-.provider-button.disabled {
-  color: var(--muted);
-  cursor: not-allowed;
-  opacity: 0.72;
-}
-.provider-button.disabled:hover {
-  border-color: var(--border-strong);
-}
 .provider-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

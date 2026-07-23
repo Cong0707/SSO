@@ -630,6 +630,10 @@ function AuthPage(props: {
   }, []);
   const login = props.mode === "login";
   const requestedReturnTo = params.get("redirect") || "/dashboard";
+  const visibleProviders = providers.filter(
+    (provider) =>
+      provider.enabled && provider.configured && provider.kind !== "telegram",
+  );
   async function submit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
@@ -751,41 +755,23 @@ function AuthPage(props: {
             {login ? props.t("signIn") : props.t("signUp")}
           </Button>
         </form>
-        {providers.length > 0 && (
+        {visibleProviders.length > 0 && (
           <div className="auth-providers">
             <div className="divider">
               <span>第三方登录 / 注册</span>
             </div>
             <div className="provider-grid">
-              {providers.map((provider) =>
-                provider.enabled && provider.kind !== "telegram" ? (
-                  <a
-                    className="provider-button"
-                    key={provider.kind}
-                    href={`/oauth/upstream/${provider.kind}/start?return_to=${encodeURIComponent(requestedReturnTo)}`}
-                  >
-                    <ProviderIcon kind={provider.kind} />
-                    <span>{provider.display_name}</span>
-                    <small>登录 / 注册</small>
-                  </a>
-                ) : (
-                  <div
-                    className="provider-button disabled"
-                    key={provider.kind}
-                    title={
-                      provider.kind === "telegram"
-                        ? "需要配置 Telegram Login Widget"
-                        : "管理员尚未配置此登录方式"
-                    }
-                  >
-                    <ProviderIcon kind={provider.kind} />
-                    <span>{provider.display_name}</span>
-                    <small>
-                      {provider.kind === "telegram" ? "需要 Widget" : "未配置"}
-                    </small>
-                  </div>
-                ),
-              )}
+              {visibleProviders.map((provider) => (
+                <a
+                  className="provider-button"
+                  key={provider.kind}
+                  href={`/oauth/upstream/${provider.kind}/start?return_to=${encodeURIComponent(requestedReturnTo)}`}
+                >
+                  <ProviderIcon kind={provider.kind} />
+                  <span>{provider.display_name}</span>
+                  <small>登录 / 注册</small>
+                </a>
+              ))}
             </div>
             <p className="provider-hint">
               首次使用会自动创建账号并导入用户名、已验证邮箱和头像，之后可在个人资料中修改。
@@ -1972,22 +1958,14 @@ function ProfilePage({
                 <ProviderIcon kind={provider.kind} />
                 <div>
                   <strong>{provider.display_name}</strong>
-                  <span>
-                    {provider.configured
-                      ? provider.bound
-                        ? t("connected")
-                        : "已配置"
-                      : "未配置"}
-                  </span>
+                  <span>{provider.bound ? t("connected") : "可连接"}</span>
                 </div>
-                {provider.enabled && (
-                  <a
-                    className="button ghost"
-                    href={`/oauth/upstream/${provider.kind}/start?return_to=/profile`}
-                  >
-                    {provider.bound ? "重新连接" : t("connect")}
-                  </a>
-                )}
+                <a
+                  className="button ghost"
+                  href={`/oauth/upstream/${provider.kind}/start?return_to=/profile`}
+                >
+                  {provider.bound ? "重新连接" : t("connect")}
+                </a>
               </div>
             ))}
           </div>
