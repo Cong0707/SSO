@@ -1,0 +1,2828 @@
+{
+  "10 / 页": {
+    "zhCN": "10 / 页",
+    "en": "10/page",
+    "fr": "10/page",
+    "ru": "10/стр.",
+    "ja": "10/ページ",
+    "vi": "10/trang",
+    "zhTW": "10 / 頁"
+  },
+  "20 / 页": {
+    "zhCN": "20 / 页",
+    "en": "20/page",
+    "fr": "20/page",
+    "ru": "20/стр.",
+    "ja": "20/ページ",
+    "vi": "20/trang",
+    "zhTW": "20 / 頁"
+  },
+  "2FA 验证码": {
+    "zhCN": "2FA 验证码",
+    "en": "2FA verification code",
+    "fr": "Code de vérification 2FA",
+    "ru": "Код подтверждения 2FA",
+    "ja": "2FA 検証コード",
+    "vi": "Mã xác minh 2FA",
+    "zhTW": "2FA 驗證碼"
+  },
+  "3-32 位字母、数字、下划线或连字符": {
+    "zhCN": "3-32 位字母、数字、下划线或连字符",
+    "en": "3-32 letters, numbers, underscores, or hyphens",
+    "fr": "3 à 32 lettres, chiffres, traits de soulignement ou traits d'union",
+    "ru": "3–32 буквы, цифры, символы подчеркивания или дефисы.",
+    "ja": "3 ～ 32 文字の文字、数字、アンダースコア、またはハイフン",
+    "vi": "3-32 chữ cái, số, dấu gạch dưới hoặc dấu gạch nối",
+    "zhTW": "3-32 位字母、數字、底線或連字符"
+  },
+  "50 / 页": {
+    "zhCN": "50 / 页",
+    "en": "50/page",
+    "fr": "50/page",
+    "ru": "50/стр.",
+    "ja": "50/ページ",
+    "vi": "50/trang",
+    "zhTW": "50 / 頁"
+  },
+  "安全活动": {
+    "zhCN": "安全活动",
+    "en": "safety activities",
+    "fr": "activités de sécurité",
+    "ru": "мероприятия по обеспечению безопасности",
+    "ja": "安全活動",
+    "vi": "hoạt động an toàn",
+    "zhTW": "安全活動"
+  },
+  "安全状态总览": {
+    "zhCN": "安全状态总览",
+    "en": "Security status overview",
+    "fr": "Aperçu de l'état de sécurité",
+    "ru": "Обзор состояния безопасности",
+    "ja": "セキュリティステータスの概要",
+    "vi": "Tổng quan về trạng thái bảo mật",
+    "zhTW": "安全狀態總覽"
+  },
+  "按用户名、显示名称或邮箱筛选...": {
+    "zhCN": "按用户名、显示名称或邮箱筛选...",
+    "en": "Filter by username, display name or email...",
+    "fr": "Filtrer par nom d'utilisateur, nom d'affichage ou email...",
+    "ru": "Фильтровать по имени пользователя, отображаемому имени или адресу электронной почты...",
+    "ja": "ユーザー名、表示名、または電子メールでフィルターします...",
+    "vi": "Lọc theo tên người dùng, tên hiển thị hoặc email...",
+    "zhTW": "依使用者名稱、顯示名稱或郵件信箱篩選..."
+  },
+  "绑定": {
+    "zhCN": "绑定",
+    "en": "Bind",
+    "fr": "Lier",
+    "ru": "Привязать",
+    "ja": "バインド",
+    "vi": "Buộc",
+    "zhTW": "連結"
+  },
+  "绑定已删除": {
+    "zhCN": "绑定已删除",
+    "en": "Binding deleted",
+    "fr": "Liaison supprimée",
+    "ru": "Привязка удалена.",
+    "ja": "バインディングが削除されました",
+    "vi": "Đã xóa ràng buộc",
+    "zhTW": "綁定已刪除"
+  },
+  "绑定邮箱": {
+    "zhCN": "绑定邮箱",
+    "en": "Bind Email",
+    "fr": "Lier l'e-mail",
+    "ru": "Привязать Email",
+    "ja": "メールアドレス連携",
+    "vi": "Liên kết Email",
+    "zhTW": "連結電郵"
+  },
+  "保存 Provider": {
+    "zhCN": "保存 Provider",
+    "en": "Save Provider",
+    "fr": "Enregistrer le fournisseur",
+    "ru": "Сохранить поставщика",
+    "ja": "プロバイダーの保存",
+    "vi": "Lưu nhà cung cấp",
+    "zhTW": "儲存 Provider"
+  },
+  "保存更改": {
+    "zhCN": "保存更改",
+    "en": "Save changes",
+    "fr": "Enregistrer les modifications",
+    "ru": "Сохранить изменения",
+    "ja": "変更を保存",
+    "vi": "Lưu thay đổi",
+    "zhTW": "儲存變更"
+  },
+  "保存机器人保护设置": {
+    "zhCN": "保存机器人保护设置",
+    "en": "Save robot protection settings",
+    "fr": "Enregistrer les paramètres de protection du robot",
+    "ru": "Сохраните настройки защиты робота",
+    "ja": "ロボット保護設定を保存する",
+    "vi": "Lưu cài đặt bảo vệ robot",
+    "zhTW": "保存機器人保護設置"
+  },
+  "保存失败": {
+    "zhCN": "保存失败",
+    "en": "Failed to save",
+    "fr": "Échec de la sauvegarde",
+    "ru": "Не удалось сохранить",
+    "ja": "保存に失敗",
+    "vi": "Lưu thất bại",
+    "zhTW": "儲存失敗"
+  },
+  "保存邮件设置": {
+    "zhCN": "保存邮件设置",
+    "en": "Save mail settings",
+    "fr": "Enregistrer les paramètres de messagerie",
+    "ru": "Сохранить настройки почты",
+    "ja": "メール設定を保存する",
+    "vi": "Lưu cài đặt thư",
+    "zhTW": "儲存郵件設定"
+  },
+  "保存资料": {
+    "zhCN": "保存资料",
+    "en": "save data",
+    "fr": "enregistrer des données",
+    "ru": "сохранить данные",
+    "ja": "セーブデータ",
+    "vi": "lưu dữ liệu",
+    "zhTW": "保存資料"
+  },
+  "本地调试验证码：": {
+    "zhCN": "本地调试验证码：",
+    "en": "Local debugging verification code:",
+    "fr": "Code de vérification du débogage local :",
+    "ru": "Код проверки локальной отладки:",
+    "ja": "ローカル デバッグ検証コード:",
+    "vi": "Mã xác minh gỡ lỗi cục bộ:",
+    "zhTW": "本地調試驗證碼："
+  },
+  "编辑": {
+    "zhCN": "编辑",
+    "en": "Edit",
+    "fr": "Modifier",
+    "ru": "Редактировать",
+    "ja": "編集",
+    "vi": "Chỉnh sửa",
+    "zhTW": "編輯"
+  },
+  "编辑应用": {
+    "zhCN": "编辑应用",
+    "en": "Edit application",
+    "fr": "Modifier la demande",
+    "ru": "Редактировать заявку",
+    "ja": "アプリケーションの編集",
+    "vi": "Chỉnh sửa ứng dụng",
+    "zhTW": "編輯應用"
+  },
+  "编辑用户": {
+    "zhCN": "编辑用户",
+    "en": "Edit user",
+    "fr": "Modifier l'utilisateur",
+    "ru": "Изменить пользователя",
+    "ja": "ユーザーの編集",
+    "vi": "Chỉnh sửa người dùng",
+    "zhTW": "編輯使用者"
+  },
+  "操作": {
+    "zhCN": "操作",
+    "en": "Action",
+    "fr": "Action",
+    "ru": "Действие",
+    "ja": "アクション",
+    "vi": "Hành động",
+    "zhTW": "操作"
+  },
+  "操作失败": {
+    "zhCN": "操作失败",
+    "en": "Operation failed",
+    "fr": "Opération échouée",
+    "ru": "Операция не удалась",
+    "ja": "操作に失敗しました",
+    "vi": "Thao tác thất bại",
+    "zhTW": "操作失敗"
+  },
+  "测试失败": {
+    "zhCN": "测试失败",
+    "en": "Test failed",
+    "fr": "Échec du test",
+    "ru": "Тест не выполнен",
+    "ja": "テストに失敗しました",
+    "vi": "Kiểm tra thất bại",
+    "zhTW": "測試失敗"
+  },
+  "测试邮件已发送": {
+    "zhCN": "测试邮件已发送",
+    "en": "Test email sent",
+    "fr": "E-mail de test envoyé",
+    "ru": "Тестовое письмо отправлено",
+    "ja": "テストメールを送信しました",
+    "vi": "Đã gửi email kiểm tra",
+    "zhTW": "測試郵件已發送"
+  },
+  "查看当前有效会话并撤销不再使用的设备。": {
+    "zhCN": "查看当前有效会话并撤销不再使用的设备。",
+    "en": "View currently active sessions and revoke devices that are no longer in use.",
+    "fr": "Affichez les sessions actuellement actives et révoquez les appareils qui ne sont plus utilisés.",
+    "ru": "Просматривайте текущие активные сеансы и отзывайте устройства, которые больше не используются.",
+    "ja": "現在アクティブなセッションを表示し、使用されなくなったデバイスを取り消します。",
+    "vi": "Xem các phiên hiện đang hoạt động và thu hồi các thiết bị không còn được sử dụng.",
+    "zhTW": "查看目前有效會話並撤銷不再使用的裝置。"
+  },
+  "查看应用授权记录": {
+    "zhCN": "查看应用授权记录",
+    "en": "View application authorization records",
+    "fr": "Afficher les enregistrements d'autorisation de demande",
+    "ru": "Просмотр записей авторизации приложения",
+    "ja": "アプリケーション認証レコードの表示",
+    "vi": "Xem hồ sơ ủy quyền ứng dụng",
+    "zhTW": "查看應用程式授權記錄"
+  },
+  "查询": {
+    "zhCN": "查询",
+    "en": "Query",
+    "fr": "Requête",
+    "ru": "Запрос",
+    "ja": "クエリ",
+    "vi": "Truy vấn",
+    "zhTW": "查詢"
+  },
+  "撤销": {
+    "zhCN": "撤销",
+    "en": "Cancel",
+    "fr": "Annuler",
+    "ru": "Отмена",
+    "ja": "キャンセル",
+    "vi": "Hủy bỏ",
+    "zhTW": "撤銷"
+  },
+  "撤销失败": {
+    "zhCN": "撤销失败",
+    "en": "Undo failed",
+    "fr": "Échec de l'annulation",
+    "ru": "Отменить не удалось",
+    "ja": "元に戻すことができませんでした",
+    "vi": "Hoàn tác không thành công",
+    "zhTW": "撤銷失敗"
+  },
+  "创建 token": {
+    "zhCN": "创建 token",
+    "en": "Create token",
+    "fr": "Créer un jeton",
+    "ru": "Создать токен",
+    "ja": "トークンの作成",
+    "vi": "Tạo mã thông báo",
+    "zhTW": "建立 token"
+  },
+  "创建个人访问令牌": {
+    "zhCN": "创建个人访问令牌",
+    "en": "Create a personal access token",
+    "fr": "Créer un jeton d'accès personnel",
+    "ru": "Создайте токен личного доступа",
+    "ja": "個人用アクセストークンを作成する",
+    "vi": "Tạo mã thông báo truy cập cá nhân",
+    "zhTW": "建立個人存取令牌"
+  },
+  "创建失败": {
+    "zhCN": "创建失败",
+    "en": "Creation failed",
+    "fr": "Échec de la création",
+    "ru": "Создание не удалось",
+    "ja": "作成に失敗しました",
+    "vi": "Tạo thất bại",
+    "zhTW": "建立失敗"
+  },
+  "创建时间": {
+    "zhCN": "创建时间",
+    "en": "Created",
+    "fr": "Créé",
+    "ru": "Создано",
+    "ja": "作成済み",
+    "vi": "Đã tạo",
+    "zhTW": "建立時間"
+  },
+  "创建一个新的 OAuth2 / OIDC 应用": {
+    "zhCN": "创建一个新的 OAuth2 / OIDC 应用",
+    "en": "Create a new OAuth2/OIDC application",
+    "fr": "Créer une nouvelle application OAuth2/OIDC",
+    "ru": "Создайте новое приложение OAuth2/OIDC.",
+    "ja": "新しい OAuth2/OIDC アプリケーションを作成する",
+    "vi": "Tạo ứng dụng OAuth2/OIDC mới",
+    "zhTW": "建立一個新的 OAuth2 / OIDC 應用"
+  },
+  "创建应用": {
+    "zhCN": "创建应用",
+    "en": "Create app",
+    "fr": "Créer une application",
+    "ru": "Создать приложение",
+    "ja": "アプリの作成",
+    "vi": "Tạo ứng dụng",
+    "zhTW": "創建應用"
+  },
+  "创建账号": {
+    "zhCN": "创建账号",
+    "en": "Create account",
+    "fr": "Créer un compte",
+    "ru": "Создать учетную запись",
+    "ja": "アカウントを作成する",
+    "vi": "Tạo tài khoản",
+    "zhTW": "建立帳號"
+  },
+  "此密钥只会显示一次，请立即复制并妥善保存。": {
+    "zhCN": "此密钥只会显示一次，请立即复制并妥善保存。",
+    "en": "This key will only appear once, please copy it now and keep it in a safe place.",
+    "fr": "Cette clé n'apparaîtra qu'une seule fois, veuillez la copier maintenant et la conserver dans un endroit sûr.",
+    "ru": "Этот ключ появится только один раз, скопируйте его сейчас и сохраните в надежном месте.",
+    "ja": "このキーは 1 回だけ表示されます。今すぐコピーして安全な場所に保管してください。",
+    "vi": "Chìa khóa này sẽ chỉ xuất hiện một lần, vui lòng sao chép ngay bây giờ và giữ nó ở nơi an toàn.",
+    "zhTW": "此密鑰只會顯示一次，請立即複製並妥善保存。"
+  },
+  "此应用将获得": {
+    "zhCN": "此应用将获得",
+    "en": "This application will receive",
+    "fr": "Cette candidature recevra",
+    "ru": "Это приложение получит",
+    "ja": "このアプリケーションが受け取るのは、",
+    "vi": "Ứng dụng này sẽ nhận được",
+    "zhTW": "此應用程式將獲得"
+  },
+  "此应用请求访问你的 xem SSO 账号。": {
+    "zhCN": "此应用请求访问你的 xem SSO 账号。",
+    "en": "This application requests access to your xem SSO account.",
+    "fr": "Cette application demande l'accès à votre compte xem SSO.",
+    "ru": "Это приложение запрашивает доступ к вашей учетной записи xem SSO.",
+    "ja": "このアプリケーションは、xem SSO アカウントへのアクセスを要求します。",
+    "vi": "Ứng dụng này yêu cầu quyền truy cập vào tài khoản xem SSO của bạn.",
+    "zhTW": "此應用程式請求存取你的 xem SSO 帳號。"
+  },
+  "打开": {
+    "zhCN": "打开",
+    "en": "Open",
+    "fr": "Ouvrir",
+    "ru": "Открыть",
+    "ja": "開く",
+    "vi": "Mở",
+    "zhTW": "打開"
+  },
+  "当前": {
+    "zhCN": "当前",
+    "en": "current",
+    "fr": "courant",
+    "ru": "текущий",
+    "ja": "現在の",
+    "vi": "hiện tại",
+    "zhTW": "目前"
+  },
+  "当前仅允许已有账号登录": {
+    "zhCN": "当前仅允许已有账号登录",
+    "en": "Currently only existing accounts are allowed to log in.",
+    "fr": "Actuellement, seuls les comptes existants sont autorisés à se connecter.",
+    "ru": "В настоящее время вход в систему разрешен только существующим учетным записям.",
+    "ja": "現在、既存のアカウントのみがログインを許可されています。",
+    "vi": "Hiện tại chỉ có tài khoản hiện tại mới được phép đăng nhập.",
+    "zhTW": "目前僅允許已有帳號登錄"
+  },
+  "当前密码": {
+    "zhCN": "当前密码",
+    "en": "Current Password",
+    "fr": "Mot de passe actuel",
+    "ru": "Текущий пароль",
+    "ja": "現在のパスワード",
+    "vi": "Mật khẩu hiện tại",
+    "zhTW": "目前密碼"
+  },
+  "当前启用了邮件调试模式，生产环境必须设置": {
+    "zhCN": "当前启用了邮件调试模式，生产环境必须设置",
+    "en": "Email debugging mode is currently enabled and must be set for the production environment",
+    "fr": "Le mode de débogage des e-mails est actuellement activé et doit être défini pour l'environnement de production",
+    "ru": "Режим отладки электронной почты в настоящее время включен и должен быть настроен для производственной среды.",
+    "ja": "電子メール デバッグ モードは現在有効になっており、運用環境用に設定する必要があります",
+    "vi": "Chế độ gỡ lỗi email hiện đang được bật và phải được đặt cho môi trường sản xuất",
+    "zhTW": "目前啟用了郵件調試模式，生產環境必須設定"
+  },
+  "导出": {
+    "zhCN": "导出",
+    "en": "Export",
+    "fr": "Exporter",
+    "ru": "Экспорт",
+    "ja": "エクスポート",
+    "vi": "Xuất khẩu",
+    "zhTW": "匯出"
+  },
+  "导出我的数据": {
+    "zhCN": "导出我的数据",
+    "en": "Export my data",
+    "fr": "Exporter mes données",
+    "ru": "Экспортировать мои данные",
+    "ja": "データをエクスポートする",
+    "vi": "Xuất dữ liệu của tôi",
+    "zhTW": "匯出我的數據"
+  },
+  "登录": {
+    "zhCN": "登录",
+    "en": "Login",
+    "fr": "Connexion",
+    "ru": "Вход",
+    "ja": "ログイン",
+    "vi": "Đăng nhập",
+    "zhTW": "登入"
+  },
+  "登录 / 注册": {
+    "zhCN": "登录 / 注册",
+    "en": "Login/Register",
+    "fr": "Connexion/Inscription",
+    "ru": "Войти/Зарегистрироваться",
+    "ja": "ログイン/登録",
+    "vi": "Đăng nhập/Đăng ký",
+    "zhTW": "登入 / 註冊"
+  },
+  "登录或注册": {
+    "zhCN": "登录或注册",
+    "en": "Login or register",
+    "fr": "Connectez-vous ou inscrivez-vous",
+    "ru": "Войти или зарегистрироваться",
+    "ja": "ログインまたは登録",
+    "vi": "Đăng nhập hoặc đăng ký",
+    "zhTW": "登入或註冊"
+  },
+  "登录密码": {
+    "zhCN": "登录密码",
+    "en": "Login password",
+    "fr": "Mot de passe de connexion",
+    "ru": "Пароль для входа",
+    "ja": "ログインパスワード",
+    "vi": "Mật khẩu đăng nhập",
+    "zhTW": "登入密碼"
+  },
+  "登录设备": {
+    "zhCN": "登录设备",
+    "en": "Log into device",
+    "fr": "Connectez-vous à l'appareil",
+    "ru": "Войти в устройство",
+    "ja": "デバイスにログインする",
+    "vi": "Đăng nhập vào thiết bị",
+    "zhTW": "登入裝置"
+  },
+  "登录要合并的账号": {
+    "zhCN": "登录要合并的账号",
+    "en": "Log in to the account to be merged",
+    "fr": "Connectez-vous au compte à fusionner",
+    "ru": "Войдите в учетную запись для объединения",
+    "ja": "統合するアカウントにログインします",
+    "vi": "Đăng nhập vào tài khoản để được sáp nhập",
+    "zhTW": "登入要合併的帳號"
+  },
+  "第三方": {
+    "zhCN": "第三方",
+    "en": "third party",
+    "fr": "tiers",
+    "ru": "третья сторона",
+    "ja": "サードパーティ",
+    "vi": "bên thứ ba",
+    "zhTW": "第三方"
+  },
+  "第三方登录 / 注册": {
+    "zhCN": "第三方登录 / 注册",
+    "en": "Third-party login/registration",
+    "fr": "Connexion/inscription de tiers",
+    "ru": "Сторонний вход/регистрация",
+    "ja": "サードパーティのログイン/登録",
+    "vi": "Đăng nhập/đăng ký của bên thứ ba",
+    "zhTW": "第三方登入 / 註冊"
+  },
+  "第三方服务": {
+    "zhCN": "第三方服务",
+    "en": "Third party services",
+    "fr": "Services tiers",
+    "ru": "Сторонние услуги",
+    "ja": "サードパーティのサービス",
+    "vi": "Dịch vụ của bên thứ ba",
+    "zhTW": "第三方服務"
+  },
+  "第一页使用邮箱识别账号；新用户在下一页设置用户名和密码。": {
+    "zhCN": "第一页使用邮箱识别账号；新用户在下一页设置用户名和密码。",
+    "en": "Use your email address to identify your account on the first page; new users set their username and password on the next page.",
+    "fr": "Utilisez votre adresse e-mail pour identifier votre compte sur la première page ; les nouveaux utilisateurs définissent leur nom d'utilisateur et leur mot de passe sur la page suivante.",
+    "ru": "Используйте свой адрес электронной почты, чтобы идентифицировать свою учетную запись на первой странице; новые пользователи устанавливают свое имя пользователя и пароль на следующей странице.",
+    "ja": "最初のページでメール アドレスを使用してアカウントを識別します。新しいユーザーは次のページでユーザー名とパスワードを設定します。",
+    "vi": "Sử dụng địa chỉ email của bạn để xác định tài khoản của bạn trên trang đầu tiên; người dùng mới đặt tên người dùng và mật khẩu của họ trên trang tiếp theo.",
+    "zhTW": "第一頁使用信箱識別帳號；新使用者在下一頁設定使用者名稱和密碼。"
+  },
+  "动作": {
+    "zhCN": "动作",
+    "en": "action",
+    "fr": "action",
+    "ru": "действие",
+    "ja": "アクション",
+    "vi": "hành động",
+    "zhTW": "動作"
+  },
+  "读取基础个人资料": {
+    "zhCN": "读取基础个人资料",
+    "en": "Read basic personal data",
+    "fr": "Lire les données personnelles de base",
+    "ru": "Прочтите основные персональные данные",
+    "ja": "基本的な個人データを読む",
+    "vi": "Đọc dữ liệu cá nhân cơ bản",
+    "zhTW": "讀取基礎個人資料"
+  },
+  "读取用户失败": {
+    "zhCN": "读取用户失败",
+    "en": "Failed to read user",
+    "fr": "Échec de la lecture de l'utilisateur",
+    "ru": "Не удалось прочитать пользователя",
+    "ja": "ユーザーの読み取りに失敗しました",
+    "vi": "Không đọc được người dùng",
+    "zhTW": "讀取用戶失敗"
+  },
+  "读取邮箱和验证状态": {
+    "zhCN": "读取邮箱和验证状态",
+    "en": "Read email and verification status",
+    "fr": "Lire l'e-mail et le statut de vérification",
+    "ru": "Чтение электронной почты и статус проверки",
+    "ja": "メールと検証ステータスを読む",
+    "vi": "Đọc email và trạng thái xác minh",
+    "zhTW": "讀取郵箱和驗證狀態"
+  },
+  "二次验证": {
+    "zhCN": "二次验证",
+    "en": "Second verification",
+    "fr": "Deuxième vérification",
+    "ru": "Вторая проверка",
+    "ja": "2回目の検証",
+    "vi": "Xác minh lần thứ hai",
+    "zhTW": "二次驗證"
+  },
+  "二次验证（MFA）": {
+    "zhCN": "二次验证（MFA）",
+    "en": "Second Factor Authentication (MFA)",
+    "fr": "Authentification à deuxième facteur (MFA)",
+    "ru": "Второй фактор аутентификации (MFA)",
+    "ja": "第 2 要素認証 (MFA)",
+    "vi": "Xác thực yếu tố thứ hai (MFA)",
+    "zhTW": "二次驗證（MFA）"
+  },
+  "发件人": {
+    "zhCN": "发件人",
+    "en": "sender",
+    "fr": "expéditeur",
+    "ru": "отправитель",
+    "ja": "差出人",
+    "vi": "người gửi",
+    "zhTW": "寄件人"
+  },
+  "发起合并失败": {
+    "zhCN": "发起合并失败",
+    "en": "Failed to initiate merge",
+    "fr": "Échec du lancement de la fusion",
+    "ru": "Не удалось инициировать объединение",
+    "ja": "マージの開始に失敗しました",
+    "vi": "Không thể bắt đầu hợp nhất",
+    "zhTW": "發起合併失敗"
+  },
+  "发送测试": {
+    "zhCN": "发送测试",
+    "en": "Send test",
+    "fr": "Envoyer le test",
+    "ru": "Отправить тест",
+    "ja": "送信テスト",
+    "vi": "Gửi bài kiểm tra",
+    "zhTW": "發送測試"
+  },
+  "发送测试邮件": {
+    "zhCN": "发送测试邮件",
+    "en": "Send test email",
+    "fr": "Envoyer un e-mail de test",
+    "ru": "Отправить тестовое письмо",
+    "ja": "テストメールを送信する",
+    "vi": "Gửi email kiểm tra",
+    "zhTW": "發送測試郵件"
+  },
+  "发送失败": {
+    "zhCN": "发送失败",
+    "en": "Sending failed",
+    "fr": "L'envoi a échoué",
+    "ru": "Отправка не удалась",
+    "ja": "送信に失敗しました",
+    "vi": "Gửi không thành công",
+    "zhTW": "發送失敗"
+  },
+  "发送验证码": {
+    "zhCN": "发送验证码",
+    "en": "Send code",
+    "fr": "Envoyer le code",
+    "ru": "Отправить код",
+    "ja": "コードを送信",
+    "vi": "Gửi mã",
+    "zhTW": "發送驗證碼"
+  },
+  "返回": {
+    "zhCN": "返回",
+    "en": "Back",
+    "fr": "Retour",
+    "ru": "Назад",
+    "ja": "戻る",
+    "vi": "Quay lại",
+    "zhTW": "返回"
+  },
+  "返回仪表盘": {
+    "zhCN": "返回仪表盘",
+    "en": "Return to dashboard",
+    "fr": "Retour au tableau de bord",
+    "ru": "Вернуться на панель управления",
+    "ja": "ダッシュボードに戻る",
+    "vi": "Quay lại bảng điều khiển",
+    "zhTW": "返回儀表板"
+  },
+  "返回应用列表": {
+    "zhCN": "返回应用列表",
+    "en": "Return to application list",
+    "fr": "Retour à la liste des candidatures",
+    "ru": "Вернуться к списку приложений",
+    "ja": "アプリケーションリストに戻る",
+    "vi": "Quay lại danh sách ứng dụng",
+    "zhTW": "返回應用程式列表"
+  },
+  "访问令牌": {
+    "zhCN": "访问令牌",
+    "en": "Access Token",
+    "fr": "Jeton d'accès",
+    "ru": "Токен доступа",
+    "ja": "アクセストークン",
+    "vi": "Token truy cập",
+    "zhTW": "存取令牌"
+  },
+  "复制密钥": {
+    "zhCN": "复制密钥",
+    "en": "Copy Key",
+    "fr": "Copier la clé",
+    "ru": "Копировать ключ",
+    "ja": "キーをコピー",
+    "vi": "Sao chép khóa",
+    "zhTW": "複製金鑰"
+  },
+  "复制全部": {
+    "zhCN": "复制全部",
+    "en": "copy all",
+    "fr": "copier tout",
+    "ru": "скопировать все",
+    "ja": "すべてコピーする",
+    "vi": "sao chép tất cả",
+    "zhTW": "複製全部"
+  },
+  "该用户没有绑定记录": {
+    "zhCN": "该用户没有绑定记录",
+    "en": "This user has no binding records",
+    "fr": "Cet utilisateur n'a aucun enregistrement de liaison",
+    "ru": "У этого пользователя нет привязывающих записей",
+    "ja": "このユーザーにはバインディング レコードがありません",
+    "vi": "Người dùng này không có hồ sơ ràng buộc",
+    "zhTW": "該用戶沒有綁定記錄"
+  },
+  "个人访问令牌": {
+    "zhCN": "个人访问令牌",
+    "en": "personal access token",
+    "fr": "jeton d'accès personnel",
+    "ru": "токен личного доступа",
+    "ja": "個人アクセストークン",
+    "vi": "mã thông báo truy cập cá nhân",
+    "zhTW": "個人訪問令牌"
+  },
+  "个人访问令牌（PAT）": {
+    "zhCN": "个人访问令牌（PAT）",
+    "en": "Personal Access Token (PAT)",
+    "fr": "Jeton d'accès personnel (PAT)",
+    "ru": "Токен личного доступа (PAT)",
+    "ja": "パーソナル アクセス トークン (PAT)",
+    "vi": "Mã thông báo truy cập cá nhân (PAT)",
+    "zhTW": "個人存取權杖（PAT）"
+  },
+  "个人设置": {
+    "zhCN": "个人设置",
+    "en": "Personal Settings",
+    "fr": "Paramètres personnels",
+    "ru": "Личные настройки",
+    "ja": "個人設定",
+    "vi": "Cài đặt cá nhân",
+    "zhTW": "個人設定"
+  },
+  "个人资料": {
+    "zhCN": "个人资料",
+    "en": "Profile",
+    "fr": "Profil",
+    "ru": "Профиль",
+    "ja": "プロフィール",
+    "vi": "Hồ sơ",
+    "zhTW": "個人資料"
+  },
+  "个用户": {
+    "zhCN": "个用户",
+    "en": "users",
+    "fr": "utilisateurs",
+    "ru": "пользователи",
+    "ja": "ユーザー",
+    "vi": "người dùng",
+    "zhTW": "個用戶"
+  },
+  "更新公开展示信息和界面偏好。": {
+    "zhCN": "更新公开展示信息和界面偏好。",
+    "en": "Update public display information and interface preferences.",
+    "fr": "Mettez à jour les informations d’affichage public et les préférences d’interface.",
+    "ru": "Обновите информацию о публичном отображении и настройки интерфейса.",
+    "ja": "パブリック表示情報とインターフェース設定を更新します。",
+    "vi": "Cập nhật thông tin hiển thị công khai và tùy chọn giao diện.",
+    "zhTW": "更新公開展示資訊和介面偏好。"
+  },
+  "更新用户": {
+    "zhCN": "更新用户",
+    "en": "Update user",
+    "fr": "Mettre à jour l'utilisateur",
+    "ru": "Обновить пользователя",
+    "ja": "ユーザーを更新する",
+    "vi": "Cập nhật người dùng",
+    "zhTW": "更新用戶"
+  },
+  "公共客户端（必须使用 PKCE）": {
+    "zhCN": "公共客户端（必须使用 PKCE）",
+    "en": "Public client (must use PKCE)",
+    "fr": "Client public (doit utiliser PKCE)",
+    "ru": "Публичный клиент (необходимо использовать PKCE)",
+    "ja": "パブリッククライアント (PKCE を使用する必要があります)",
+    "vi": "Máy khách công cộng (phải sử dụng PKCE)",
+    "zhTW": "公共客戶端（必須使用 PKCE）"
+  },
+  "共": {
+    "zhCN": "共",
+    "en": "total",
+    "fr": "total",
+    "ru": "всего",
+    "ja": "合計",
+    "vi": "tổng cộng",
+    "zhTW": "共"
+  },
+  "关闭": {
+    "zhCN": "关闭",
+    "en": "Close",
+    "fr": "Fermer",
+    "ru": "Закрыть",
+    "ja": "閉じる",
+    "vi": "Đóng",
+    "zhTW": "關閉"
+  },
+  "关闭后仍允许已有账号登录以及管理员配置的第三方身份登录。": {
+    "zhCN": "关闭后仍允许已有账号登录以及管理员配置的第三方身份登录。",
+    "en": "After closing, login with existing accounts and third-party identities configured by the administrator are still allowed.",
+    "fr": "Après la fermeture, la connexion avec les comptes existants et les identités tierces configurées par l'administrateur sont toujours autorisées.",
+    "ru": "После закрытия вход в систему с использованием существующих учетных записей и сторонних учетных записей, настроенных администратором, по-прежнему разрешен.",
+    "ja": "閉じた後も、既存のアカウントおよび管理者が構成したサードパーティ ID を使用したログインは引き続き許可されます。",
+    "vi": "Sau khi đóng, đăng nhập bằng tài khoản hiện có và danh tính của bên thứ ba do quản trị viên định cấu hình vẫn được phép.",
+    "zhTW": "關閉後仍允許已有帳號登入以及管理員設定的第三方身分登入。"
+  },
+  "管理": {
+    "zhCN": "管理",
+    "en": "Manage",
+    "fr": "Gestion",
+    "ru": "Управление",
+    "ja": "管理",
+    "vi": "Quản lý",
+    "zhTW": "管理"
+  },
+  "管理 OAuth2 / OIDC 应用": {
+    "zhCN": "管理 OAuth2 / OIDC 应用",
+    "en": "Manage OAuth2 / OIDC applications",
+    "fr": "Gérer les applications OAuth2/OIDC",
+    "ru": "Управление приложениями OAuth2/OIDC",
+    "ja": "OAuth2 / OIDC アプリケーションを管理する",
+    "vi": "Quản lý ứng dụng OAuth2/OIDC",
+    "zhTW": "管理 OAuth2 / OIDC 應用"
+  },
+  "管理个人资料、登录方式与账号安全": {
+    "zhCN": "管理个人资料、登录方式与账号安全",
+    "en": "Manage personal information, login methods and account security",
+    "fr": "Gérer les informations personnelles, les méthodes de connexion et la sécurité du compte",
+    "ru": "Управляйте личной информацией, способами входа и безопасностью учетной записи.",
+    "ja": "個人情報、ログイン方法、アカウントのセキュリティを管理する",
+    "vi": "Quản lý thông tin cá nhân, phương thức đăng nhập và bảo mật tài khoản",
+    "zhTW": "管理個人資料、登入方式與帳號安全"
+  },
+  "管理你已允许哪些应用调用你的资源 API": {
+    "zhCN": "管理你已允许哪些应用调用你的资源 API",
+    "en": "Manage which apps you've allowed to call your resource APIs",
+    "fr": "Gérez les applications que vous avez autorisées à appeler vos API de ressources",
+    "ru": "Управляйте тем, каким приложениям вы разрешили вызывать API ваших ресурсов.",
+    "ja": "リソース API の呼び出しを許可したアプリを管理する",
+    "vi": "Quản lý những ứng dụng bạn đã cho phép gọi API tài nguyên của mình",
+    "zhTW": "管理你已允許哪些應用程式呼叫你的資源 API"
+  },
+  "管理应用接入与账号安全。": {
+    "zhCN": "管理应用接入与账号安全。",
+    "en": "Manage application access and account security.",
+    "fr": "Gérez l’accès aux applications et la sécurité des comptes.",
+    "ru": "Управляйте доступом к приложениям и безопасностью учетной записи.",
+    "ja": "アプリケーションのアクセスとアカウントのセキュリティを管理します。",
+    "vi": "Quản lý quyền truy cập ứng dụng và bảo mật tài khoản.",
+    "zhTW": "管理應用程式存取與帳號安全。"
+  },
+  "管理员": {
+    "zhCN": "管理员",
+    "en": "Admin",
+    "fr": "Administrateur",
+    "ru": "Администратор",
+    "ja": "管理者",
+    "vi": "Quản trị viên",
+    "zhTW": "管理員"
+  },
+  "管理账号状态、权限和全部登录身份绑定。": {
+    "zhCN": "管理账号状态、权限和全部登录身份绑定。",
+    "en": "Manage account status, permissions, and all login identity bindings.",
+    "fr": "Gérez l'état du compte, les autorisations et toutes les liaisons d'identité de connexion.",
+    "ru": "Управляйте статусом учетной записи, разрешениями и всеми привязками учетных записей.",
+    "ja": "アカウントのステータス、権限、すべてのログイン ID バインディングを管理します。",
+    "vi": "Quản lý trạng thái tài khoản, quyền và tất cả các ràng buộc nhận dạng đăng nhập.",
+    "zhTW": "管理帳號狀態、權限和全部登入身分綁定。"
+  },
+  "还没有创建任何 token": {
+    "zhCN": "还没有创建任何 token",
+    "en": "No tokens have been created yet",
+    "fr": "Aucun jeton n'a encore été créé",
+    "ru": "Токены еще не созданы",
+    "ja": "トークンはまだ作成されていません",
+    "vi": "Chưa có mã thông báo nào được tạo",
+    "zhTW": "還沒有創建任何 token"
+  },
+  "合并账号": {
+    "zhCN": "合并账号",
+    "en": "Merge accounts",
+    "fr": "Fusionner les comptes",
+    "ru": "Объединить аккаунты",
+    "ja": "アカウントを統合する",
+    "vi": "Hợp nhất tài khoản",
+    "zhTW": "合併帳號"
+  },
+  "欢迎回来": {
+    "zhCN": "欢迎回来",
+    "en": "welcome back",
+    "fr": "bon retour",
+    "ru": "с возвращением",
+    "ja": "おかえりなさい",
+    "vi": "chào mừng trở lại",
+    "zhTW": "歡迎回來"
+  },
+  "回调地址": {
+    "zhCN": "回调地址",
+    "en": "Callback address",
+    "fr": "Adresse de rappel",
+    "ru": "Адрес обратного вызова",
+    "ja": "コールバックアドレス",
+    "vi": "Địa chỉ callback",
+    "zhTW": "Callback地址"
+  },
+  "活跃设备": {
+    "zhCN": "活跃设备",
+    "en": "active device",
+    "fr": "appareil actif",
+    "ru": "активное устройство",
+    "ja": "アクティブなデバイス",
+    "vi": "thiết bị hoạt động",
+    "zhTW": "活躍設備"
+  },
+  "机器人保护": {
+    "zhCN": "机器人保护",
+    "en": "Bot Protection",
+    "fr": "Protection des bots",
+    "ru": "Защита от ботов",
+    "ja": "ボット保護",
+    "vi": "Bảo vệ Bot",
+    "zhTW": "機械人保護"
+  },
+  "基本身份验证": {
+    "zhCN": "基本身份验证",
+    "en": "Basic Authentication",
+    "fr": "Authentification de base",
+    "ru": "Базовая аутентификация",
+    "ja": "基本認証",
+    "vi": "Xác thực cơ bản",
+    "zhTW": "基本身份驗證"
+  },
+  "基本信息": {
+    "zhCN": "基本信息",
+    "en": "Basic Info",
+    "fr": "Informations de base",
+    "ru": "Основная информация",
+    "ja": "基本情報",
+    "vi": "Thông tin cơ bản",
+    "zhTW": "基本資訊"
+  },
+  "继续绑定": {
+    "zhCN": "继续绑定",
+    "en": "continue binding",
+    "fr": "continuer à lier",
+    "ru": "продолжить связывание",
+    "ja": "バインドを続ける",
+    "vi": "tiếp tục ràng buộc",
+    "zhTW": "繼續綁定"
+  },
+  "继续验证另一个账号": {
+    "zhCN": "继续验证另一个账号",
+    "en": "Continue to verify another account",
+    "fr": "Continuer à vérifier un autre compte",
+    "ru": "Продолжить подтверждение другого аккаунта",
+    "ja": "別のアカウントの認証を続ける",
+    "vi": "Tiếp tục xác minh tài khoản khác",
+    "zhTW": "繼續驗證另一個帳號"
+  },
+  "加载设置...": {
+    "zhCN": "加载设置...",
+    "en": "Loading settings...",
+    "fr": "Chargement des paramètres...",
+    "ru": "Загрузка настроек...",
+    "ja": "設定を読み込んでいます...",
+    "vi": "Đang tải cài đặt...",
+    "zhTW": "加載設定..."
+  },
+  "加载中…": {
+    "zhCN": "加载中…",
+    "en": "Loading…",
+    "fr": "Chargement…",
+    "ru": "Загрузка…",
+    "ja": "読み込み中…",
+    "vi": "Đang tải…",
+    "zhTW": "加載中…"
+  },
+  "检查账号安全": {
+    "zhCN": "检查账号安全",
+    "en": "Check account security",
+    "fr": "Vérifier la sécurité du compte",
+    "ru": "Проверьте безопасность аккаунта",
+    "ja": "アカウントのセキュリティを確認する",
+    "vi": "Kiểm tra bảo mật tài khoản",
+    "zhTW": "檢查帳號安全"
+  },
+  "将另一个账号与当前账号合并。": {
+    "zhCN": "将另一个账号与当前账号合并。",
+    "en": "Merge another account with the current account.",
+    "fr": "Fusionnez un autre compte avec le compte courant.",
+    "ru": "Объедините другую учетную запись с текущей учетной записью.",
+    "ja": "別のアカウントを現在のアカウントと結合します。",
+    "vi": "Hợp nhất một tài khoản khác với tài khoản hiện tại.",
+    "zhTW": "將另一個帳號與目前帳號合併。"
+  },
+  "角色": {
+    "zhCN": "角色",
+    "en": "Role",
+    "fr": "Rôle",
+    "ru": "Роль",
+    "ja": "ロール",
+    "vi": "Vai trò",
+    "zhTW": "角色"
+  },
+  "接收安全邮件": {
+    "zhCN": "接收安全邮件",
+    "en": "Receive secure email",
+    "fr": "Recevoir un e-mail sécurisé",
+    "ru": "Получайте безопасную электронную почту",
+    "ja": "安全なメールを受信する",
+    "vi": "Nhận email an toàn",
+    "zhTW": "接收安全郵件"
+  },
+  "解绑": {
+    "zhCN": "解绑",
+    "en": "Unbind",
+    "fr": "Dissocier",
+    "ru": "Отвязать",
+    "ja": "連携解除",
+    "vi": "Hủy liên kết",
+    "zhTW": "解綁"
+  },
+  "解绑失败": {
+    "zhCN": "解绑失败",
+    "en": "Unbind failed",
+    "fr": "Échec de la dissociation",
+    "ru": "Не удалось отвязать",
+    "ja": "連携解除に失敗しました",
+    "vi": "Hủy liên kết thất bại",
+    "zhTW": "解綁失敗"
+  },
+  "客户端密钥已生成": {
+    "zhCN": "客户端密钥已生成",
+    "en": "Client key generated",
+    "fr": "Clé client générée",
+    "ru": "Клиентский ключ сгенерирован",
+    "ja": "クライアントキーが生成されました",
+    "vi": "Khóa khách hàng đã được tạo",
+    "zhTW": "客戶端密鑰已生成"
+  },
+  "控制邮箱、密码和注册流程。": {
+    "zhCN": "控制邮箱、密码和注册流程。",
+    "en": "Control your email, password and registration process.",
+    "fr": "Contrôlez votre e-mail, votre mot de passe et votre processus d'inscription.",
+    "ru": "Контролируйте свою электронную почту, пароль и процесс регистрации.",
+    "ja": "電子メール、パスワード、登録プロセスを管理します。",
+    "vi": "Kiểm soát email, mật khẩu và quá trình đăng ký của bạn.",
+    "zhTW": "控制郵箱、密碼和註冊流程。"
+  },
+  "例如：CI deployment": {
+    "zhCN": "例如：CI deployment",
+    "en": "For example: CI deployment",
+    "fr": "Par exemple : déploiement de CI",
+    "ru": "Например: развертывание CI",
+    "ja": "例: CI デプロイメント",
+    "vi": "Ví dụ: triển khai CI",
+    "zhTW": "例如：CI deployment"
+  },
+  "连接": {
+    "zhCN": "连接",
+    "en": "Connect",
+    "fr": "Connecter",
+    "ru": "Подключение",
+    "ja": "接続",
+    "vi": "Kết nối",
+    "zhTW": "連接"
+  },
+  "连接测试": {
+    "zhCN": "连接测试",
+    "en": "Connection test",
+    "fr": "Test de connexion",
+    "ru": "Тест подключения",
+    "ja": "接続テスト",
+    "vi": "Kiểm tra kết nối",
+    "zhTW": "連接測試"
+  },
+  "两次输入的新密码不一致": {
+    "zhCN": "两次输入的新密码不一致",
+    "en": "The new passwords entered twice are inconsistent",
+    "fr": "Les nouveaux mots de passe saisis deux fois sont incohérents",
+    "ru": "Новые пароли, введенные дважды, несовместимы.",
+    "ja": "2 回入力した新しいパスワードは矛盾しています",
+    "vi": "Mật khẩu mới nhập hai lần không nhất quán",
+    "zhTW": "兩次輸入的新密碼不一致"
+  },
+  "令牌名称": {
+    "zhCN": "令牌名称",
+    "en": "Token Name",
+    "fr": "Nom du jeton",
+    "ru": "Имя токена",
+    "ja": "トークン名",
+    "vi": "Tên mã thông báo",
+    "zhTW": "令牌名稱"
+  },
+  "令牌已创建": {
+    "zhCN": "令牌已创建",
+    "en": "Token created",
+    "fr": "Jeton créé",
+    "ru": "Токен создан",
+    "ja": "トークンが作成されました",
+    "vi": "Đã tạo mã thông báo",
+    "zhTW": "令牌已建立"
+  },
+  "令牌只会完整显示一次。": {
+    "zhCN": "令牌只会完整显示一次。",
+    "en": "The token will only be displayed in full once.",
+    "fr": "Le jeton ne sera affiché dans son intégralité qu'une seule fois.",
+    "ru": "Токен будет отображаться полностью только один раз.",
+    "ja": "トークンは完全に 1 回だけ表示されます。",
+    "vi": "Mã thông báo sẽ chỉ được hiển thị đầy đủ một lần.",
+    "zhTW": "令牌只會完整顯示一次。"
+  },
+  "浏览器 / 系统": {
+    "zhCN": "浏览器 / 系统",
+    "en": "Browser/System",
+    "fr": "Navigateur/Système",
+    "ru": "Браузер/Система",
+    "ja": "ブラウザ/システム",
+    "vi": "Trình duyệt/Hệ thống",
+    "zhTW": "瀏覽器 / 系統"
+  },
+  "留空以保持不变": {
+    "zhCN": "留空以保持不变",
+    "en": "Leave empty to keep unchanged",
+    "fr": "Laissez vide pour conserver inchangé",
+    "ru": "Оставьте пустым, чтобы сохранить без изменений",
+    "ja": "変更しない場合は空欄のまま",
+    "vi": "Để trống để giữ nguyên",
+    "zhTW": "留空以保持不變"
+  },
+  "留空以使用用户名": {
+    "zhCN": "留空以使用用户名",
+    "en": "Leave empty to use username",
+    "fr": "Laissez vide pour utiliser le nom d'utilisateur",
+    "ru": "Оставьте пустым, чтобы использовать имя пользователя",
+    "ja": "ユーザー名を使用するには空のままにしてください",
+    "vi": "Để trống để sử dụng tên người dùng",
+    "zhTW": "留空以使用用戶名"
+  },
+  "没有匹配的用户": {
+    "zhCN": "没有匹配的用户",
+    "en": "No matching user",
+    "fr": "Aucun utilisateur correspondant",
+    "ru": "Нет подходящего пользователя",
+    "ja": "一致するユーザーがいません",
+    "vi": "Không có người dùng phù hợp",
+    "zhTW": "沒有匹配的用戶"
+  },
+  "每个备用码只能使用一次，请存放在安全位置。": {
+    "zhCN": "每个备用码只能使用一次，请存放在安全位置。",
+    "en": "Each backup code can only be used once, please store it in a safe place.",
+    "fr": "Chaque code de sauvegarde ne peut être utilisé qu'une seule fois, veuillez le conserver dans un endroit sûr.",
+    "ru": "Каждый резервный код можно использовать только один раз, храните его в надежном месте.",
+    "ja": "各バックアップ コードは 1 回のみ使用できるため、安全な場所に保管してください。",
+    "vi": "Mỗi mã dự phòng chỉ được sử dụng một lần, vui lòng lưu trữ ở nơi an toàn.",
+    "zhTW": "每個備用碼只能使用一次，請存放在安全位置。"
+  },
+  "每页数量": {
+    "zhCN": "每页数量",
+    "en": "Quantity per page",
+    "fr": "Quantité par page",
+    "ru": "Количество на странице",
+    "ja": "ページあたりの数量",
+    "vi": "Số lượng mỗi trang",
+    "zhTW": "每頁數量"
+  },
+  "密码": {
+    "zhCN": "密码",
+    "en": "Password",
+    "fr": "Mot de passe",
+    "ru": "Пароль",
+    "ja": "パスワード",
+    "vi": "Mật khẩu",
+    "zhTW": "密碼"
+  },
+  "密码、MFA、邮箱和异常登录发生变更时发送提醒。": {
+    "zhCN": "密码、MFA、邮箱和异常登录发生变更时发送提醒。",
+    "en": "Send alerts when passwords, MFA, email, and abnormal logins change.",
+    "fr": "Envoyez des alertes lorsque les mots de passe, MFA, e-mails et connexions anormales changent.",
+    "ru": "Отправляйте оповещения при изменении паролей, MFA, электронной почты и необычных входов в систему.",
+    "ja": "パスワード、MFA、電子メール、および異常なログインが変更されたときにアラートを送信します。",
+    "vi": "Gửi thông báo khi mật khẩu, MFA, email và thông tin đăng nhập bất thường thay đổi.",
+    "zhTW": "密碼、MFA、郵箱和異常登入發生變更時發送提醒。"
+  },
+  "密码和二次验证分别在独立流程中完成。": {
+    "zhCN": "密码和二次验证分别在独立流程中完成。",
+    "en": "Passwords and two-step verification are completed in separate processes.",
+    "fr": "Les mots de passe et la vérification en deux étapes sont effectués dans le cadre de processus distincts.",
+    "ru": "Пароли и двухэтапная проверка выполняются в отдельных процессах.",
+    "ja": "パスワードと 2 段階認証は別のプロセスで完了します。",
+    "vi": "Mật khẩu và xác minh hai bước được hoàn thành trong các quy trình riêng biệt.",
+    "zhTW": "密碼和二次驗證分別在獨立流程中完成。"
+  },
+  "密码已修改，其他设备已退出": {
+    "zhCN": "密码已修改，其他设备已退出",
+    "en": "The password has been changed and other devices have been logged out",
+    "fr": "Le mot de passe a été modifié et d'autres appareils ont été déconnectés",
+    "ru": "Пароль был изменен, и другие устройства вышли из системы.",
+    "ja": "パスワードが変更され、他のデバイスがログアウトされました",
+    "vi": "Mật khẩu đã được thay đổi và các thiết bị khác đã đăng xuất",
+    "zhTW": "密碼已修改，其他裝置已退出"
+  },
+  "描述你的应用…": {
+    "zhCN": "描述你的应用…",
+    "en": "Describe your application…",
+    "fr": "Décrivez votre candidature…",
+    "ru": "Опишите ваше приложение…",
+    "ja": "アプリケーションについて説明してください…",
+    "vi": "Hãy mô tả ứng dụng của bạn…",
+    "zhTW": "描述你的應用…"
+  },
+  "能力": {
+    "zhCN": "能力",
+    "en": "Capabilities",
+    "fr": "Capacités",
+    "ru": "Возможности",
+    "ja": "機能",
+    "vi": "Khả năng",
+    "zhTW": "能力"
+  },
+  "你": {
+    "zhCN": "你",
+    "en": "you",
+    "fr": "vous",
+    "ru": "ты",
+    "ja": "あなた",
+    "vi": "bạn",
+    "zhTW": "你"
+  },
+  "配置可用于客户登录和绑定的上游身份提供商。": {
+    "zhCN": "配置可用于客户登录和绑定的上游身份提供商。",
+    "en": "Configure an upstream identity provider that can be used for customer login and binding.",
+    "fr": "Configurez un fournisseur d'identité en amont qui peut être utilisé pour la connexion et la liaison du client.",
+    "ru": "Настройте вышестоящего поставщика удостоверений, который можно использовать для входа и привязки клиентов.",
+    "ja": "顧客のログインとバインドに使用できるアップストリーム ID プロバイダーを構成します。",
+    "vi": "Định cấu hình nhà cung cấp danh tính ngược dòng có thể được sử dụng để đăng nhập và ràng buộc khách hàng.",
+    "zhTW": "配置可用於客戶登入和綁定的上游身分提供者。"
+  },
+  "配置身份验证与第三方服务。": {
+    "zhCN": "配置身份验证与第三方服务。",
+    "en": "Configure authentication and third-party services.",
+    "fr": "Configurez l'authentification et les services tiers.",
+    "ru": "Настройте аутентификацию и сторонние сервисы.",
+    "ja": "認証とサードパーティのサービスを構成します。",
+    "vi": "Định cấu hình xác thực và dịch vụ của bên thứ ba.",
+    "zhTW": "配置身份驗證與第三方服務。"
+  },
+  "启用": {
+    "zhCN": "启用",
+    "en": "Enable",
+    "fr": "Activer",
+    "ru": "Включить",
+    "ja": "有効にする",
+    "vi": "Bật",
+    "zhTW": "啟用"
+  },
+  "启用二次验证": {
+    "zhCN": "启用二次验证",
+    "en": "Enable two-step verification",
+    "fr": "Activer la vérification en deux étapes",
+    "ru": "Включить двухэтапную аутентификацию",
+    "ja": "2段階認証を有効にする",
+    "vi": "Bật xác minh hai bước",
+    "zhTW": "啟用二次驗證"
+  },
+  "浅色模式": {
+    "zhCN": "浅色模式",
+    "en": "light mode",
+    "fr": "mode lumière",
+    "ru": "световой режим",
+    "ja": "ライトモード",
+    "vi": "chế độ ánh sáng",
+    "zhTW": "淺色模式"
+  },
+  "强制启用": {
+    "zhCN": "强制启用",
+    "en": "Force enable",
+    "fr": "Forcer l'activation",
+    "ru": "Принудительное включение",
+    "ja": "強制的に有効にする",
+    "vi": "Buộc kích hoạt",
+    "zhTW": "強制啟用"
+  },
+  "请立即保存备用码。": {
+    "zhCN": "请立即保存备用码。",
+    "en": "Please save the backup code now.",
+    "fr": "Veuillez enregistrer le code de sauvegarde maintenant.",
+    "ru": "Пожалуйста, сохраните резервный код сейчас.",
+    "ja": "今すぐバックアップ コードを保存してください。",
+    "vi": "Hãy lưu mã dự phòng ngay bây giờ.",
+    "zhTW": "請立即儲存備用碼。"
+  },
+  "请求失败": {
+    "zhCN": "请求失败",
+    "en": "Request failed",
+    "fr": "Échec de la requête",
+    "ru": "Запрос не выполнен",
+    "ja": "リクエスト失敗",
+    "vi": "Yêu cầu thất bại",
+    "zhTW": "請求失敗"
+  },
+  "请使用另一个账号完成验证。": {
+    "zhCN": "请使用另一个账号完成验证。",
+    "en": "Please use another account to complete verification.",
+    "fr": "Veuillez utiliser un autre compte pour terminer la vérification.",
+    "ru": "Пожалуйста, используйте другую учетную запись для завершения проверки.",
+    "ja": "別のアカウントを使用して認証を完了してください。",
+    "vi": "Vui lòng sử dụng tài khoản khác để hoàn tất xác minh.",
+    "zhTW": "請使用另一個帳號完成驗證。"
+  },
+  "请输入 Secret Key": {
+    "zhCN": "请输入 Secret Key",
+    "en": "Please enter Secret Key",
+    "fr": "Veuillez entrer la clé secrète",
+    "ru": "Пожалуйста, введите секретный ключ",
+    "ja": "秘密キーを入力してください",
+    "vi": "Vui lòng nhập Khóa bí mật",
+    "zhTW": "請輸入 Secret Key"
+  },
+  "请输入密码": {
+    "zhCN": "请输入密码",
+    "en": "Please enter your password",
+    "fr": "Veuillez saisir votre mot de passe",
+    "ru": "Пожалуйста, введите пароль",
+    "ja": "パスワードを入力してください",
+    "vi": "Vui lòng nhập mật khẩu",
+    "zhTW": "請輸入密碼"
+  },
+  "请输入密钥": {
+    "zhCN": "请输入密钥",
+    "en": "Please enter key",
+    "fr": "Veuillez entrer la clé",
+    "ru": "Пожалуйста, введите ключ",
+    "ja": "キーを入力してください",
+    "vi": "Vui lòng nhập khóa",
+    "zhTW": "請輸入密鑰"
+  },
+  "取消": {
+    "zhCN": "取消",
+    "en": "Cancel",
+    "fr": "Annuler",
+    "ru": "Отмена",
+    "ja": "キャンセル",
+    "vi": "Hủy bỏ",
+    "zhTW": "取消"
+  },
+  "全部角色": {
+    "zhCN": "全部角色",
+    "en": "All roles",
+    "fr": "Tous les rôles",
+    "ru": "Все роли",
+    "ja": "すべての役割",
+    "vi": "Tất cả vai trò",
+    "zhTW": "全部角色"
+  },
+  "全部状态": {
+    "zhCN": "全部状态",
+    "en": "All status",
+    "fr": "Tous les statuts",
+    "ru": "Все статусы",
+    "ja": "すべてのステータス",
+    "vi": "Tất cả trạng thái",
+    "zhTW": "全部狀態"
+  },
+  "权限与状态": {
+    "zhCN": "权限与状态",
+    "en": "Permissions and status",
+    "fr": "Autorisations et statut",
+    "ru": "Разрешения и статус",
+    "ja": "権限とステータス",
+    "vi": "Quyền và trạng thái",
+    "zhTW": "權限與狀態"
+  },
+  "确认": {
+    "zhCN": "确认",
+    "en": "Confirm",
+    "fr": "Confirmer",
+    "ru": "Подтверждение",
+    "ja": "確認",
+    "vi": "Xác nhận",
+    "zhTW": "確認"
+  },
+  "确认后将删除当前 MFA 密钥和所有备用码。": {
+    "zhCN": "确认后将删除当前 MFA 密钥和所有备用码。",
+    "en": "Confirmation will delete the current MFA key and all backup codes.",
+    "fr": "La confirmation supprimera la clé MFA actuelle et tous les codes de sauvegarde.",
+    "ru": "При подтверждении текущий ключ MFA и все резервные коды будут удалены.",
+    "ja": "確認すると、現在の MFA キーとすべてのバックアップ コードが削除されます。",
+    "vi": "Xác nhận sẽ xóa khóa MFA hiện tại và tất cả các mã dự phòng.",
+    "zhTW": "確認後將刪除目前 MFA 金鑰和所有備用碼。"
+  },
+  "确认密码": {
+    "zhCN": "确认密码",
+    "en": "Confirm password",
+    "fr": "Confirmer le mot de passe",
+    "ru": "Подтвердить пароль",
+    "ja": "パスワードの確認",
+    "vi": "Xác nhận mật khẩu",
+    "zhTW": "確認密碼"
+  },
+  "确认删除这个应用？": {
+    "zhCN": "确认删除这个应用？",
+    "en": "Are you sure you want to delete this app?",
+    "fr": "Êtes-vous sûr de vouloir supprimer cette application ?",
+    "ru": "Вы уверены, что хотите удалить это приложение?",
+    "ja": "このアプリを削除してもよろしいですか?",
+    "vi": "Bạn có chắc chắn muốn xóa ứng dụng này?",
+    "zhTW": "確認刪除這個應用程式？"
+  },
+  "确认停用": {
+    "zhCN": "确认停用",
+    "en": "Confirm deactivation",
+    "fr": "Confirmer la désactivation",
+    "ru": "Подтвердить деактивацию",
+    "ja": "非アクティブ化の確認",
+    "vi": "Xác nhận hủy kích hoạt",
+    "zhTW": "確認停用"
+  },
+  "确认新密码": {
+    "zhCN": "确认新密码",
+    "en": "Confirm New Password",
+    "fr": "Confirmer le nouveau mot de passe",
+    "ru": "Подтвердить новый пароль",
+    "ja": "新しいパスワードの確認",
+    "vi": "Xác nhận mật khẩu mới",
+    "zhTW": "確認新密碼"
+  },
+  "确认修改": {
+    "zhCN": "确认修改",
+    "en": "Confirm changes",
+    "fr": "Confirmer les modifications",
+    "ru": "Подтвердить изменения",
+    "ja": "変更を確認する",
+    "vi": "Xác nhận thay đổi",
+    "zhTW": "確認修改"
+  },
+  "确认注销": {
+    "zhCN": "确认注销",
+    "en": "Confirm logout",
+    "fr": "Confirmer la déconnexion",
+    "ru": "Подтвердить выход",
+    "ja": "ログアウトの確認",
+    "vi": "Xác nhận đăng xuất",
+    "zhTW": "確認註銷"
+  },
+  "确认注销账户？注销后将无法继续登录。": {
+    "zhCN": "确认注销账户？注销后将无法继续登录。",
+    "en": "Confirm to cancel account? After logging out, you will no longer be able to log in.",
+    "fr": "Confirmer pour annuler le compte ? Après vous être déconnecté, vous ne pourrez plus vous connecter.",
+    "ru": "Подтвердить удаление аккаунта? После выхода из системы вы больше не сможете войти в систему.",
+    "ja": "アカウントをキャンセルすることを確認しますか?ログアウトするとログインできなくなります。",
+    "vi": "Xác nhận hủy tài khoản? Sau khi đăng xuất, bạn sẽ không thể đăng nhập được nữa.",
+    "zhTW": "確認註銷帳戶？登出後將無法繼續登入。"
+  },
+  "认证进度": {
+    "zhCN": "认证进度",
+    "en": "Certification progress",
+    "fr": "Progression de la certification",
+    "ru": "Ход сертификации",
+    "ja": "認証の進捗状況",
+    "vi": "Tiến độ chứng nhận",
+    "zhTW": "認證進度"
+  },
+  "删除": {
+    "zhCN": "删除",
+    "en": "Delete",
+    "fr": "Supprimer",
+    "ru": "Удалить",
+    "ja": "削除",
+    "vi": "Xóa",
+    "zhTW": "刪除"
+  },
+  "删除失败": {
+    "zhCN": "删除失败",
+    "en": "Delete failed",
+    "fr": "Échec de la suppression",
+    "ru": "Не удалось удалить",
+    "ja": "削除に失敗しました",
+    "vi": "Xóa thất bại",
+    "zhTW": "刪除失敗"
+  },
+  "上传失败": {
+    "zhCN": "上传失败",
+    "en": "Upload failed",
+    "fr": "Échec du téléchargement",
+    "ru": "Загрузка не удалась",
+    "ja": "アップロードに失敗しました",
+    "vi": "Tải lên không thành công",
+    "zhTW": "上傳失敗"
+  },
+  "上传头像": {
+    "zhCN": "上传头像",
+    "en": "Upload avatar",
+    "fr": "Télécharger un avatar",
+    "ru": "Загрузить аватар",
+    "ja": "アバターをアップロードする",
+    "vi": "Tải hình đại diện lên",
+    "zhTW": "上傳頭像"
+  },
+  "上一页": {
+    "zhCN": "上一页",
+    "en": "Previous page",
+    "fr": "Page précédente",
+    "ru": "Предыдущая страница",
+    "ja": "前のページ",
+    "vi": "Trang trước",
+    "zhTW": "上一頁"
+  },
+  "上游接入商": {
+    "zhCN": "上游接入商",
+    "en": "upstream access provider",
+    "fr": "fournisseur d'accès en amont",
+    "ru": "восходящий провайдер доступа",
+    "ja": "上流アクセスプロバイダー",
+    "vi": "nhà cung cấp truy cập ngược dòng",
+    "zhTW": "上游存取商"
+  },
+  "尚未绑定": {
+    "zhCN": "尚未绑定",
+    "en": "Not yet bound",
+    "fr": "Pas encore lié",
+    "ru": "Еще не связан",
+    "ja": "まだバインドされていない",
+    "vi": "Chưa bị ràng buộc",
+    "zhTW": "尚未綁定"
+  },
+  "尚未设置密码": {
+    "zhCN": "尚未设置密码",
+    "en": "No password set yet",
+    "fr": "Aucun mot de passe défini pour l'instant",
+    "ru": "Пароль еще не установлен",
+    "ja": "まだパスワードが設定されていません",
+    "vi": "Chưa đặt mật khẩu",
+    "zhTW": "尚未設定密碼"
+  },
+  "设备": {
+    "zhCN": "设备",
+    "en": "Equipment",
+    "fr": "Équipement",
+    "ru": "Оборудование",
+    "ja": "設備",
+    "vi": "Thiết bị",
+    "zhTW": "裝置"
+  },
+  "设置后会撤销该用户的全部现有会话": {
+    "zhCN": "设置后会撤销该用户的全部现有会话",
+    "en": "Setting this will revoke all existing sessions for this user",
+    "fr": "Définir ceci révoquera toutes les sessions existantes pour cet utilisateur",
+    "ru": "Установка этого параметра приведет к отмене всех существующих сеансов для этого пользователя.",
+    "ja": "これを設定すると、このユーザーの既存のセッションがすべて取り消されます",
+    "vi": "Cài đặt này sẽ thu hồi tất cả các phiên hiện có của người dùng này",
+    "zhTW": "設定後會撤銷該使用者的全部現有會話"
+  },
+  "设置密码": {
+    "zhCN": "设置密码",
+    "en": "Set password",
+    "fr": "Définir le mot de passe",
+    "ru": "Установить пароль",
+    "ja": "パスワードを設定する",
+    "vi": "Đặt mật khẩu",
+    "zhTW": "設定密碼"
+  },
+  "申请接入": {
+    "zhCN": "申请接入",
+    "en": "Apply for access",
+    "fr": "Demander l'accès",
+    "ru": "Подать заявку на доступ",
+    "ja": "アクセスを申請する",
+    "vi": "Đăng ký quyền truy cập",
+    "zhTW": "申請接入"
+  },
+  "身份验证": {
+    "zhCN": "身份验证",
+    "en": "Authentication",
+    "fr": "Authentification",
+    "ru": "Аутентификация",
+    "ja": "認証",
+    "vi": "Xác thực",
+    "zhTW": "身份驗證"
+  },
+  "深色模式": {
+    "zhCN": "深色模式",
+    "en": "dark mode",
+    "fr": "mode sombre",
+    "ru": "темный режим",
+    "ja": "ダークモード",
+    "vi": "chế độ tối",
+    "zhTW": "深色模式"
+  },
+  "时间": {
+    "zhCN": "时间",
+    "en": "Time",
+    "fr": "Heure",
+    "ru": "Время",
+    "ja": "時間",
+    "vi": "Thời gian",
+    "zhTW": "時間"
+  },
+  "使用 Authenticator App 扫描二维码并验证。": {
+    "zhCN": "使用 Authenticator App 扫描二维码并验证。",
+    "en": "Use the Authenticator App to scan the QR code and verify it.",
+    "fr": "Utilisez l'application Authenticator pour scanner le code QR et le vérifier.",
+    "ru": "Используйте приложение Authenticator, чтобы отсканировать QR-код и проверить его.",
+    "ja": "Authenticator アプリを使用して QR コードをスキャンし、確認します。",
+    "vi": "Sử dụng Ứng dụng Authenticator để quét mã QR và xác minh nó.",
+    "zhTW": "使用 Authenticator App 掃描二維碼並驗證。"
+  },
+  "使用当前已保存配置发送测试邮件。": {
+    "zhCN": "使用当前已保存配置发送测试邮件。",
+    "en": "Send a test email using the currently saved configuration.",
+    "fr": "Envoyez un e-mail de test en utilisant la configuration actuellement enregistrée.",
+    "ru": "Отправьте тестовое электронное письмо, используя сохраненную в данный момент конфигурацию.",
+    "ja": "現在保存されている設定を使用してテスト電子メールを送信します。",
+    "vi": "Gửi email kiểm tra bằng cấu hình hiện đã lưu.",
+    "zhTW": "使用目前已儲存設定發送測試郵件。"
+  },
+  "使用你的身份标识登录": {
+    "zhCN": "使用你的身份标识登录",
+    "en": "Log in with your ID",
+    "fr": "Connectez-vous avec votre identifiant",
+    "ru": "Войдите под своим идентификатором",
+    "ja": "IDでログイン",
+    "vi": "Đăng nhập bằng ID của bạn",
+    "zhTW": "使用你的身分識別登入"
+  },
+  "使用一个账号访问你的应用、授权和安全设置。": {
+    "zhCN": "使用一个账号访问你的应用、授权和安全设置。",
+    "en": "Use one account to access your applications, authorization and security settings.",
+    "fr": "Utilisez un seul compte pour accéder à vos applications, à vos paramètres d'autorisation et de sécurité.",
+    "ru": "Используйте одну учетную запись для доступа к своим приложениям, авторизации и настройкам безопасности.",
+    "ja": "1 つのアカウントを使用して、アプリケーション、認証、セキュリティ設定にアクセスします。",
+    "vi": "Sử dụng một tài khoản để truy cập các ứng dụng, ủy quyền và cài đặt bảo mật của bạn.",
+    "zhTW": "使用一個帳號存取你的應用程式、授權和安全設定。"
+  },
+  "授权": {
+    "zhCN": "授权",
+    "en": "Authorize",
+    "fr": "Autoriser",
+    "ru": "Авторизовать",
+    "ja": "認証",
+    "vi": "Ủy quyền",
+    "zhTW": "授權"
+  },
+  "授权范围": {
+    "zhCN": "授权范围",
+    "en": "Authorization scope",
+    "fr": "Portée de l'autorisation",
+    "ru": "Область полномочий",
+    "ja": "認可範囲",
+    "vi": "Phạm vi ủy quyền",
+    "zhTW": "授權範圍"
+  },
+  "授权请求": {
+    "zhCN": "授权请求",
+    "en": "Authorization request",
+    "fr": "Demande d'autorisation",
+    "ru": "Запрос авторизации",
+    "ja": "認可リクエスト",
+    "vi": "Yêu cầu ủy quyền",
+    "zhTW": "授權請求"
+  },
+  "授权日志": {
+    "zhCN": "授权日志",
+    "en": "Authorization log",
+    "fr": "Journal d'autorisation",
+    "ru": "Журнал авторизации",
+    "ja": "認可ログ",
+    "vi": "Nhật ký ủy quyền",
+    "zhTW": "授權日誌"
+  },
+  "授权时间": {
+    "zhCN": "授权时间",
+    "en": "Authorization time",
+    "fr": "Délai d'autorisation",
+    "ru": "Время авторизации",
+    "ja": "認証時間",
+    "vi": "Thời gian ủy quyền",
+    "zhTW": "授權時間"
+  },
+  "授权已撤销": {
+    "zhCN": "授权已撤销",
+    "en": "Authorization revoked",
+    "fr": "Autorisation révoquée",
+    "ru": "Разрешение отозвано",
+    "ja": "認可が取り消されました",
+    "vi": "Ủy quyền đã bị thu hồi",
+    "zhTW": "授權已撤銷"
+  },
+  "输入密码": {
+    "zhCN": "输入密码",
+    "en": "Enter password",
+    "fr": "Saisir le mot de passe",
+    "ru": "Введите пароль",
+    "ja": "パスワードを入力",
+    "vi": "Nhập mật khẩu",
+    "zhTW": "輸入密碼"
+  },
+  "添加第三方账号": {
+    "zhCN": "添加第三方账号",
+    "en": "Add third-party account",
+    "fr": "Ajouter un compte tiers",
+    "ru": "Добавить сторонний аккаунт",
+    "ja": "サードパーティのアカウントを追加する",
+    "vi": "Thêm tài khoản của bên thứ ba",
+    "zhTW": "新增第三方帳號"
+  },
+  "停用": {
+    "zhCN": "停用",
+    "en": "deactivate",
+    "fr": "désactiver",
+    "ru": "деактивировать",
+    "ja": "非アクティブ化する",
+    "vi": "vô hiệu hóa",
+    "zhTW": "停用"
+  },
+  "停用二次验证": {
+    "zhCN": "停用二次验证",
+    "en": "Disable 2-step verification",
+    "fr": "Désactiver la vérification en deux étapes",
+    "ru": "Отключить двухэтапную аутентификацию",
+    "ja": "2段階認証を無効にする",
+    "vi": "Tắt xác minh 2 bước",
+    "zhTW": "停用二次驗證"
+  },
+  "停用失败": {
+    "zhCN": "停用失败",
+    "en": "Deactivation failed",
+    "fr": "Échec de la désactivation",
+    "ru": "Деактивация не удалась",
+    "ja": "非アクティブ化に失敗しました",
+    "vi": "Vô hiệu hóa không thành công",
+    "zhTW": "停用失敗"
+  },
+  "通过必要信息更新用户。": {
+    "zhCN": "通过必要信息更新用户。",
+    "en": "Update users with necessary information.",
+    "fr": "Mettre à jour les utilisateurs avec les informations nécessaires.",
+    "ru": "Сообщайте пользователям необходимую информацию.",
+    "ja": "必要な情報をユーザーに更新します。",
+    "vi": "Cập nhật cho người dùng những thông tin cần thiết.",
+    "zhTW": "透過必要資訊更新使用者。"
+  },
+  "头像 URL": {
+    "zhCN": "头像 URL",
+    "en": "Avatar URL",
+    "fr": "URL de l'avatar",
+    "ru": "URL-адрес аватара",
+    "ja": "アバターURL",
+    "vi": "URL hình đại diện",
+    "zhTW": "頭像 URL"
+  },
+  "头像已更新": {
+    "zhCN": "头像已更新",
+    "en": "Avatar has been updated",
+    "fr": "L'avatar a été mis à jour",
+    "ru": "Аватар обновлен",
+    "ja": "アバターが更新されました",
+    "vi": "Hình đại diện đã được cập nhật",
+    "zhTW": "頭像已更新"
+  },
+  "退出登录": {
+    "zhCN": "退出登录",
+    "en": "Log out",
+    "fr": "Se déconnecter",
+    "ru": "Выйти",
+    "ja": "ログアウト",
+    "vi": "Đăng xuất",
+    "zhTW": "登出登入"
+  },
+  "退出其它设备": {
+    "zhCN": "退出其它设备",
+    "en": "Exit other devices",
+    "fr": "Quitter les autres appareils",
+    "ru": "Выйти из других устройств",
+    "ja": "他のデバイスを終了する",
+    "vi": "Thoát khỏi các thiết bị khác",
+    "zhTW": "退出其它設備"
+  },
+  "退出失败": {
+    "zhCN": "退出失败",
+    "en": "Exit failed",
+    "fr": "Échec de la sortie",
+    "ru": "Выход не удался",
+    "ja": "終了に失敗しました",
+    "vi": "Thoát không thành công",
+    "zhTW": "退出失敗"
+  },
+  "完成": {
+    "zhCN": "完成",
+    "en": "Done",
+    "fr": "Terminé",
+    "ru": "Готово",
+    "ja": "完了",
+    "vi": "Xong",
+    "zhTW": "完成"
+  },
+  "危险操作": {
+    "zhCN": "危险操作",
+    "en": "Dangerous operation",
+    "fr": "Opération dangereuse",
+    "ru": "Опасная операция",
+    "ja": "危険な作業",
+    "vi": "Hoạt động nguy hiểm",
+    "zhTW": "危險操作"
+  },
+  "未配置": {
+    "zhCN": "未配置",
+    "en": "Not configured",
+    "fr": "Non configuré",
+    "ru": "Не настроено",
+    "ja": "未設定",
+    "vi": "Chưa được định cấu hình",
+    "zhTW": "未配置"
+  },
+  "未启用": {
+    "zhCN": "未启用",
+    "en": "Not enabled",
+    "fr": "Non activé",
+    "ru": "Не включено",
+    "ja": "有効になっていません",
+    "vi": "Chưa bật",
+    "zhTW": "未啟用"
+  },
+  "未启用，建议配置": {
+    "zhCN": "未启用，建议配置",
+    "en": "Not enabled, recommended configuration",
+    "fr": "Non activé, configuration recommandée",
+    "ru": "Не включено, рекомендуемая конфигурация",
+    "ja": "有効になっていません。推奨構成",
+    "vi": "Chưa bật, cấu hình được đề xuất",
+    "zhTW": "未啟用，建議配置"
+  },
+  "未验证": {
+    "zhCN": "未验证",
+    "en": "Not verified",
+    "fr": "Non vérifié",
+    "ru": "Не проверено",
+    "ja": "未検証",
+    "vi": "Chưa được xác minh",
+    "zhTW": "未驗證"
+  },
+  "我的应用": {
+    "zhCN": "我的应用",
+    "en": "My application",
+    "fr": "Ma candidature",
+    "ru": "Мое приложение",
+    "ja": "私のアプリケーション",
+    "vi": "Ứng dụng của tôi",
+    "zhTW": "我的應用"
+  },
+  "无": {
+    "zhCN": "无",
+    "en": "None",
+    "fr": "Aucun",
+    "ru": "Нет",
+    "ja": "なし",
+    "vi": "Không có",
+    "zhTW": "無"
+  },
+  "无法扫码？手动输入密钥": {
+    "zhCN": "无法扫码？手动输入密钥",
+    "en": "Can't scan the QR code? Enter key manually",
+    "fr": "Vous ne parvenez pas à scanner le code QR ? Saisir la clé manuellement",
+    "ru": "Не можете отсканировать QR-код? Введите ключ вручную",
+    "ja": "QRコードをスキャンできませんか?キーを手動で入力してください",
+    "vi": "Không thể quét mã QR? Nhập khóa thủ công",
+    "zhTW": "無法掃碼？手動輸入密鑰"
+  },
+  "系统设置": {
+    "zhCN": "系统设置",
+    "en": "System settings",
+    "fr": "Paramètres système",
+    "ru": "Системные настройки",
+    "ja": "システム設定",
+    "vi": "Cài đặt hệ thống",
+    "zhTW": "系統設定"
+  },
+  "系统设置已保存": {
+    "zhCN": "系统设置已保存",
+    "en": "System settings saved",
+    "fr": "Paramètres système enregistrés",
+    "ru": "Системные настройки сохранены.",
+    "ja": "システム設定が保存されました",
+    "vi": "Đã lưu cài đặt hệ thống",
+    "zhTW": "系統設定已儲存"
+  },
+  "下一步": {
+    "zhCN": "下一步",
+    "en": "Next",
+    "fr": "Suivant",
+    "ru": "Следующий шаг",
+    "ja": "次へ",
+    "vi": "Tiếp",
+    "zhTW": "下一步"
+  },
+  "下一页": {
+    "zhCN": "下一页",
+    "en": "Next page",
+    "fr": "Page suivante",
+    "ru": "Следующая страница",
+    "ja": "次のページ",
+    "vi": "Trang tiếp theo",
+    "zhTW": "下一頁"
+  },
+  "下载平台保存的全部账号数据（JSON）。": {
+    "zhCN": "下载平台保存的全部账号数据（JSON）。",
+    "en": "Download all account data (JSON) saved by the platform.",
+    "fr": "Téléchargez toutes les données de compte (JSON) enregistrées par la plateforme.",
+    "ru": "Загрузите все данные учетной записи (JSON), сохраненные платформой.",
+    "ja": "プラットフォームによって保存されたすべてのアカウント データ (JSON) をダウンロードします。",
+    "vi": "Tải xuống tất cả dữ liệu tài khoản (JSON) được nền tảng lưu.",
+    "zhTW": "下載平台保存的全部帳號資料（JSON）。"
+  },
+  "显示名称": {
+    "zhCN": "显示名称",
+    "en": "Display name",
+    "fr": "Nom d'affichage",
+    "ru": "Отображаемое имя",
+    "ja": "表示名",
+    "vi": "Tên hiển thị",
+    "zhTW": "顯示名稱"
+  },
+  "新密码": {
+    "zhCN": "新密码",
+    "en": "New password",
+    "fr": "Nouveau mot de passe",
+    "ru": "Новый пароль",
+    "ja": "新しいパスワード",
+    "vi": "Mật khẩu mới",
+    "zhTW": "新密碼"
+  },
+  "修改后其它设备上的会话将被撤销。": {
+    "zhCN": "修改后其它设备上的会话将被撤销。",
+    "en": "Sessions on other devices will be revoked after modification.",
+    "fr": "Les sessions sur d'autres appareils seront révoquées après modification.",
+    "ru": "После внесения изменений сеансы на других устройствах будут отменены.",
+    "ja": "他のデバイス上のセッションは変更後に取り消されます。",
+    "vi": "Phiên trên các thiết bị khác sẽ bị thu hồi sau khi sửa đổi.",
+    "zhTW": "修改後其它設備上的會話將被撤銷。"
+  },
+  "修改密码": {
+    "zhCN": "修改密码",
+    "en": "Change password",
+    "fr": "Changer le mot de passe",
+    "ru": "Изменить пароль",
+    "ja": "パスワードを変更する",
+    "vi": "Thay đổi mật khẩu",
+    "zhTW": "修改密碼"
+  },
+  "修改失败": {
+    "zhCN": "修改失败",
+    "en": "Modification failed",
+    "fr": "La modification a échoué",
+    "ru": "Модификация не удалась",
+    "ja": "変更に失敗しました",
+    "vi": "Sửa đổi không thành công",
+    "zhTW": "修改失敗"
+  },
+  "选择本页全部用户": {
+    "zhCN": "选择本页全部用户",
+    "en": "Select all users on this page",
+    "fr": "Sélectionnez tous les utilisateurs sur cette page",
+    "ru": "Выбрать всех пользователей на этой странице",
+    "ja": "このページ上のすべてのユーザーを選択します",
+    "vi": "Chọn tất cả người dùng trên trang này",
+    "zhTW": "選擇本頁全部用戶"
+  },
+  "验证并绑定": {
+    "zhCN": "验证并绑定",
+    "en": "Verify and bind",
+    "fr": "Vérifier et lier",
+    "ru": "Подтвердите и привяжите",
+    "ja": "検証してバインドする",
+    "vi": "Xác minh và ràng buộc",
+    "zhTW": "驗證並綁定"
+  },
+  "验证并启用": {
+    "zhCN": "验证并启用",
+    "en": "Verify and enable",
+    "fr": "Vérifier et activer",
+    "ru": "Проверьте и включите",
+    "ja": "確認して有効にする",
+    "vi": "Xác minh và kích hoạt",
+    "zhTW": "驗證並啟用"
+  },
+  "验证码将发送到新邮箱。": {
+    "zhCN": "验证码将发送到新邮箱。",
+    "en": "A verification code will be sent to the new email address.",
+    "fr": "Un code de vérification sera envoyé à la nouvelle adresse e-mail.",
+    "ru": "На новый адрес электронной почты будет отправлен код подтверждения.",
+    "ja": "新しいメールアドレスに確認コードが送信されます。",
+    "vi": "Mã xác minh sẽ được gửi đến địa chỉ email mới.",
+    "zhTW": "驗證碼將會傳送到新信箱。"
+  },
+  "验证码已发送": {
+    "zhCN": "验证码已发送",
+    "en": "Verification code sent",
+    "fr": "Code de vérification envoyé",
+    "ru": "Код подтверждения отправлен",
+    "ja": "認証コードが送信されました",
+    "vi": "Mã xác minh đã được gửi",
+    "zhTW": "驗證碼已發送"
+  },
+  "验证码已重新发送": {
+    "zhCN": "验证码已重新发送",
+    "en": "Verification code has been resent",
+    "fr": "Le code de vérification a été renvoyé",
+    "ru": "Код подтверждения отправлен повторно",
+    "ja": "確認コードが再送信されました",
+    "vi": "Mã xác minh đã được gửi lại",
+    "zhTW": "驗證碼已重新發送"
+  },
+  "验证模式": {
+    "zhCN": "验证模式",
+    "en": "Authentication mode",
+    "fr": "Mode d'authentification",
+    "ru": "Режим аутентификации",
+    "ja": "認証モード",
+    "vi": "Chế độ xác thực",
+    "zhTW": "驗證模式"
+  },
+  "验证失败": {
+    "zhCN": "验证失败",
+    "en": "Verification failed",
+    "fr": "Échec de la vérification",
+    "ru": "Подтверждение не удалось",
+    "ja": "認証に失敗しました",
+    "vi": "Xác thực thất bại",
+    "zhTW": "驗證失敗"
+  },
+  "验证邮箱": {
+    "zhCN": "验证邮箱",
+    "en": "Verify email",
+    "fr": "Vérifier l'e-mail",
+    "ru": "Подтвердите адрес электронной почты",
+    "ja": "メールの確認",
+    "vi": "Xác minh email",
+    "zhTW": "驗證信箱"
+  },
+  "仪表盘": {
+    "zhCN": "仪表盘",
+    "en": "Dashboard",
+    "fr": "Tableau de bord",
+    "ru": "Панель управления",
+    "ja": "ダッシュボード",
+    "vi": "Trang tổng quan",
+    "zhTW": "儀表板"
+  },
+  "已复制": {
+    "zhCN": "已复制",
+    "en": "Copied",
+    "fr": "Copié",
+    "ru": "Скопировано",
+    "ja": "コピーしました",
+    "vi": "Đã sao chép",
+    "zhTW": "已複製"
+  },
+  "已合并": {
+    "zhCN": "已合并",
+    "en": "Merged",
+    "fr": "Fusionné",
+    "ru": "Объединено",
+    "ja": "合併しました",
+    "vi": "Đã hợp nhất",
+    "zhTW": "已合併"
+  },
+  "已连接": {
+    "zhCN": "已连接",
+    "en": "Connected",
+    "fr": "Connected",
+    "ru": "Connected",
+    "ja": "Connected",
+    "vi": "Connected",
+    "zhTW": "已連線"
+  },
+  "已配置": {
+    "zhCN": "已配置",
+    "en": "configured",
+    "fr": "configuré",
+    "ru": "настроен",
+    "ja": "設定済み",
+    "vi": "được cấu hình",
+    "zhTW": "已配置"
+  },
+  "已配置，留空不修改": {
+    "zhCN": "已配置，留空不修改",
+    "en": "Configured, leave blank and do not modify",
+    "fr": "Configuré, laisser vide et ne pas modifier",
+    "ru": "Настроено, оставьте пустым и не изменяйте",
+    "ja": "構成済み、空白のままにして変更しないでください",
+    "vi": "Đã cấu hình, để trống và không sửa đổi",
+    "zhTW": "已配置，留空不修改"
+  },
+  "已启用": {
+    "zhCN": "已启用",
+    "en": "Enabled",
+    "fr": "Activé",
+    "ru": "Включено",
+    "ja": "有効",
+    "vi": "Đã bật",
+    "zhTW": "已啟用"
+  },
+  "已启用 Authenticator 验证": {
+    "zhCN": "已启用 Authenticator 验证",
+    "en": "Authenticator verification enabled",
+    "fr": "Vérification de l'authentificateur activée",
+    "ru": "Проверка аутентификатора включена",
+    "ja": "認証者の検証が有効になっています",
+    "vi": "Đã bật xác minh xác thực",
+    "zhTW": "已啟用 Authenticator 驗證"
+  },
+  "已设置，可随时更新": {
+    "zhCN": "已设置，可随时更新",
+    "en": "Already set and can be updated at any time",
+    "fr": "Déjà configuré et peut être mis à jour à tout moment",
+    "ru": "Уже установлено и может быть обновлено в любое время.",
+    "ja": "すでに設定されており、いつでも更新できます",
+    "vi": "Đã được thiết lập và có thể được cập nhật bất cứ lúc nào",
+    "zhTW": "已設置，可隨時更新"
+  },
+  "已授权应用": {
+    "zhCN": "已授权应用",
+    "en": "Authorized application",
+    "fr": "Demande autorisée",
+    "ru": "Авторизованное приложение",
+    "ja": "認可されたアプリケーション",
+    "vi": "Ứng dụng được ủy quyền",
+    "zhTW": "已授權應用"
+  },
+  "已退出其它设备": {
+    "zhCN": "已退出其它设备",
+    "en": "Exited from other devices",
+    "fr": "Quitté d'autres appareils",
+    "ru": "Вышел с других устройств",
+    "ja": "他のデバイスから終了しました",
+    "vi": "Đã thoát khỏi các thiết bị khác",
+    "zhTW": "已退出其它設備"
+  },
+  "已验证": {
+    "zhCN": "已验证",
+    "en": "Verified",
+    "fr": "Vérifié",
+    "ru": "Проверено",
+    "ja": "確認済み",
+    "vi": "Đã xác minh",
+    "zhTW": "已驗證"
+  },
+  "已有绑定，可继续绑定另一个账号": {
+    "zhCN": "已有绑定，可继续绑定另一个账号",
+    "en": "Already bound, you can continue to bind another account",
+    "fr": "Déjà lié, vous pouvez continuer à lier un autre compte",
+    "ru": "Уже привязано, вы можете продолжить привязку другого аккаунта.",
+    "ja": "すでにバインドされているため、引き続き別のアカウントをバインドできます",
+    "vi": "Đã ràng buộc, bạn có thể tiếp tục ràng buộc tài khoản khác",
+    "zhTW": "已有綁定，可繼續綁定另一個帳號"
+  },
+  "已允许": {
+    "zhCN": "已允许",
+    "en": "allowed",
+    "fr": "autorisé",
+    "ru": "разрешено",
+    "ja": "許可される",
+    "vi": "được phép",
+    "zhTW": "已允許"
+  },
+  "已注销": {
+    "zhCN": "已注销",
+    "en": "Deleted",
+    "fr": "Supprimé",
+    "ru": "Удалён",
+    "ja": "削除済み",
+    "vi": "Đã xóa",
+    "zhTW": "已註銷"
+  },
+  "应用": {
+    "zhCN": "应用",
+    "en": "App",
+    "fr": "Application",
+    "ru": "Приложение",
+    "ja": "アプリ",
+    "vi": "Ứng dụng",
+    "zhTW": "套用程式"
+  },
+  "应用接入": {
+    "zhCN": "应用接入",
+    "en": "Application access",
+    "fr": "Accès aux applications",
+    "ru": "Доступ к приложению",
+    "ja": "アプリケーションへのアクセス",
+    "vi": "Quyền truy cập ứng dụng",
+    "zhTW": "應用程式存取"
+  },
+  "应用描述": {
+    "zhCN": "应用描述",
+    "en": "Application description",
+    "fr": "Description de l'application",
+    "ru": "Описание приложения",
+    "ja": "アプリケーションの説明",
+    "vi": "Mô tả ứng dụng",
+    "zhTW": "應用描述"
+  },
+  "应用名": {
+    "zhCN": "应用名",
+    "en": "Application name",
+    "fr": "Nom de la demande",
+    "ru": "Имя приложения",
+    "ja": "アプリケーション名",
+    "vi": "Tên ứng dụng",
+    "zhTW": "應用程式名"
+  },
+  "应用图标": {
+    "zhCN": "应用图标",
+    "en": "application icon",
+    "fr": "icône d'application",
+    "ru": "значок приложения",
+    "ja": "アプリケーションアイコン",
+    "vi": "biểu tượng ứng dụng",
+    "zhTW": "應用程式圖示"
+  },
+  "应用已更新": {
+    "zhCN": "应用已更新",
+    "en": "App has been updated",
+    "fr": "L'application a été mise à jour",
+    "ru": "Приложение обновлено",
+    "ja": "アプリが更新されました",
+    "vi": "Ứng dụng đã được cập nhật",
+    "zhTW": "應用程式已更新"
+  },
+  "应用已删除": {
+    "zhCN": "应用已删除",
+    "en": "App deleted",
+    "fr": "Application supprimée",
+    "ru": "Приложение удалено",
+    "ja": "アプリが削除されました",
+    "vi": "Đã xóa ứng dụng",
+    "zhTW": "應用程式已刪除"
+  },
+  "应用主页": {
+    "zhCN": "应用主页",
+    "en": "Application home page",
+    "fr": "Page d'accueil de l'application",
+    "ru": "Домашняя страница приложения",
+    "ja": "アプリケーションのホームページ",
+    "vi": "Trang chủ ứng dụng",
+    "zhTW": "應用程式首頁"
+  },
+  "用户": {
+    "zhCN": "用户",
+    "en": "User",
+    "fr": "Utilisateurs",
+    "ru": "Пользователь",
+    "ja": "ユーザー",
+    "vi": "Người dùng",
+    "zhTW": "用戶"
+  },
+  "用户管理": {
+    "zhCN": "用户管理",
+    "en": "User management",
+    "fr": "Gestion des utilisateurs",
+    "ru": "Управление пользователями",
+    "ja": "ユーザー管理",
+    "vi": "Quản lý người dùng",
+    "zhTW": "使用者管理"
+  },
+  "用户名": {
+    "zhCN": "用户名",
+    "en": "Username",
+    "fr": "Nom d'utilisateur",
+    "ru": "Имя пользователя",
+    "ja": "ユーザー名",
+    "vi": "Tên người dùng",
+    "zhTW": "用戶名"
+  },
+  "用户名由管理员维护": {
+    "zhCN": "用户名由管理员维护",
+    "en": "Username is maintained by administrator",
+    "fr": "Le nom d'utilisateur est géré par l'administrateur",
+    "ru": "Имя пользователя сохраняется администратором",
+    "ja": "ユーザー名は管理者によって管理されます",
+    "vi": "Tên người dùng được duy trì bởi quản trị viên",
+    "zhTW": "使用者名稱由管理員維護"
+  },
+  "用于服务端脚本、CI 和自动化的长期 API 凭证。": {
+    "zhCN": "用于服务端脚本、CI 和自动化的长期 API 凭证。",
+    "en": "Long-term API credentials for server-side scripting, CI, and automation.",
+    "fr": "Identifiants d'API à long terme pour les scripts côté serveur, le CI et l'automatisation.",
+    "ru": "Долгосрочные учетные данные API для серверных сценариев, непрерывной интеграции и автоматизации.",
+    "ja": "サーバーサイド スクリプティング、CI、自動化のための長期的な API 認証情報。",
+    "vi": "Thông tin xác thực API dài hạn cho tập lệnh phía máy chủ, CI và tự động hóa.",
+    "zhTW": "用於服務端腳本、CI 和自動化的長期 API 憑證。"
+  },
+  "用于注册、绑定邮箱和安全提醒。": {
+    "zhCN": "用于注册、绑定邮箱和安全提醒。",
+    "en": "Used for registration, email binding and security reminders.",
+    "fr": "Utilisé pour l'inscription, la liaison par courrier électronique et les rappels de sécurité.",
+    "ru": "Используется для регистрации, привязки электронной почты и напоминаний о безопасности.",
+    "ja": "登録、電子メール バインド、セキュリティ リマインダーに使用されます。",
+    "vi": "Được sử dụng để đăng ký, ràng buộc email và nhắc nhở bảo mật.",
+    "zhTW": "用於註冊、綁定郵箱和安全提醒。"
+  },
+  "邮件服务": {
+    "zhCN": "邮件服务",
+    "en": "Mail service",
+    "fr": "Service de courrier",
+    "ru": "Почтовая служба",
+    "ja": "メールサービス",
+    "vi": "Dịch vụ thư",
+    "zhTW": "郵件服務"
+  },
+  "邮箱": {
+    "zhCN": "邮箱",
+    "en": "Email",
+    "fr": "E-mail",
+    "ru": "Электронная почта",
+    "ja": "メールアドレス",
+    "vi": "Email",
+    "zhTW": "電郵"
+  },
+  "邮箱 ·": {
+    "zhCN": "邮箱 ·",
+    "en": "Email ·",
+    "fr": "Courriel ·",
+    "ru": "Электронная почта ·",
+    "ja": "メール・",
+    "vi": "Email ·",
+    "zhTW": "信箱 ·"
+  },
+  "邮箱验证码": {
+    "zhCN": "邮箱验证码",
+    "en": "Email verification code",
+    "fr": "Code de vérification de l'e-mail",
+    "ru": "Код подтверждения электронной почты",
+    "ja": "メール認証コード",
+    "vi": "Mã xác minh email",
+    "zhTW": "信箱驗證碼"
+  },
+  "邮箱验证失败": {
+    "zhCN": "邮箱验证失败",
+    "en": "Email verification failed",
+    "fr": "La vérification de l'e-mail a échoué",
+    "ru": "Проверка электронной почты не удалась",
+    "ja": "メール認証に失敗しました",
+    "vi": "Xác minh email không thành công",
+    "zhTW": "郵箱驗證失敗"
+  },
+  "邮箱已绑定": {
+    "zhCN": "邮箱已绑定",
+    "en": "Email is bound",
+    "fr": "L'e-mail est lié",
+    "ru": "Электронная почта привязана",
+    "ja": "電子メールはバインドされています",
+    "vi": "Email bị ràng buộc",
+    "zhTW": "信箱已綁定"
+  },
+  "语言": {
+    "zhCN": "语言",
+    "en": "Language",
+    "fr": "Language",
+    "ru": "Language",
+    "ja": "Language",
+    "vi": "Language",
+    "zhTW": "語言"
+  },
+  "允许新用户注册": {
+    "zhCN": "允许新用户注册",
+    "en": "Allow new users to register",
+    "fr": "Autoriser les nouveaux utilisateurs à s'inscrire",
+    "ru": "Разрешить регистрацию новым пользователям",
+    "ja": "新規ユーザーの登録を許可",
+    "vi": "Cho phép người dùng mới đăng ký",
+    "zhTW": "允許新用戶註冊"
+  },
+  "在登录注册流程第一页验证客户端。": {
+    "zhCN": "在登录注册流程第一页验证客户端。",
+    "en": "Verify the client on the first page of the login registration process.",
+    "fr": "Vérifiez le client sur la première page du processus d'enregistrement de connexion.",
+    "ru": "Подтвердите клиента на первой странице процесса входа в систему и регистрации.",
+    "ja": "ログイン登録プロセスの最初のページでクライアントを確認します。",
+    "vi": "Xác minh khách hàng trên trang đầu tiên của quá trình đăng ký đăng nhập.",
+    "zhTW": "在登入註冊流程第一頁驗證客戶端。"
+  },
+  "暂无安全活动": {
+    "zhCN": "暂无安全活动",
+    "en": "No safety activities yet",
+    "fr": "Aucune activité de sécurité pour l'instant",
+    "ru": "Мероприятий по обеспечению безопасности пока нет",
+    "ja": "安全活動はまだ行われていません",
+    "vi": "Chưa có hoạt động an toàn nào",
+    "zhTW": "暫無安全活動"
+  },
+  "暂无可配置的 OAuth Provider": {
+    "zhCN": "暂无可配置的 OAuth Provider",
+    "en": "There is currently no OAuth Provider to configure.",
+    "fr": "Il n'existe actuellement aucun fournisseur OAuth à configurer.",
+    "ru": "В настоящее время нет поставщика OAuth для настройки.",
+    "ja": "現在、設定する OAuth プロバイダーはありません。",
+    "vi": "Hiện tại không có Nhà cung cấp OAuth nào để định cấu hình.",
+    "zhTW": "暫無可設定的 OAuth Provider"
+  },
+  "暂无数据": {
+    "zhCN": "暂无数据",
+    "en": "No data",
+    "fr": "Aucune donnée",
+    "ru": "Нет данных",
+    "ja": "データがありません",
+    "vi": "Không có dữ liệu",
+    "zhTW": "暫無數據"
+  },
+  "暂无有效会话": {
+    "zhCN": "暂无有效会话",
+    "en": "No active session yet",
+    "fr": "Aucune session active pour le moment",
+    "ru": "Пока нет активных сессий",
+    "ja": "まだアクティブなセッションがありません",
+    "vi": "Chưa có phiên hoạt động nào",
+    "zhTW": "暫無有效會話"
+  },
+  "暂无账号绑定": {
+    "zhCN": "暂无账号绑定",
+    "en": "No account binding yet",
+    "fr": "Pas encore de liaison de compte",
+    "ru": "Привязки аккаунта пока нет",
+    "ja": "まだアカウントのバインドがありません",
+    "vi": "Chưa có ràng buộc tài khoản",
+    "zhTW": "暫無帳號綁定"
+  },
+  "账号安全": {
+    "zhCN": "账号安全",
+    "en": "Account security",
+    "fr": "Sécurité du compte",
+    "ru": "Безопасность аккаунта",
+    "ja": "アカウントのセキュリティ",
+    "vi": "Bảo mật tài khoản",
+    "zhTW": "帳號安全"
+  },
+  "账号绑定": {
+    "zhCN": "账号绑定",
+    "en": "Account binding",
+    "fr": "Liaison de compte",
+    "ru": "Привязка аккаунта",
+    "ja": "アカウントバインディング",
+    "vi": "Ràng buộc tài khoản",
+    "zhTW": "帳號綁定"
+  },
+  "账号合并完成后不可撤销，是否继续？": {
+    "zhCN": "账号合并完成后不可撤销，是否继续？",
+    "en": "Account merging is irrevocable. Do you want to continue?",
+    "fr": "La fusion de comptes est irrévocable. Voulez-vous continuer ?",
+    "ru": "Объединение аккаунтов является безотзывным. Хотите продолжить?",
+    "ja": "アカウントの統合は取り消しできません。続けますか?",
+    "vi": "Việc hợp nhất tài khoản là không thể hủy bỏ. Bạn có muốn tiếp tục không?",
+    "zhTW": "帳號合併完成後不可撤銷，是否繼續？"
+  },
+  "账号合并完成后不可撤销。": {
+    "zhCN": "账号合并完成后不可撤销。",
+    "en": "Once the account merging is completed, it cannot be revoked.",
+    "fr": "Une fois la fusion des comptes terminée, elle ne peut plus être révoquée.",
+    "ru": "После завершения объединения учетных записей его нельзя отменить.",
+    "ja": "アカウントの統合が完了すると、取り消すことはできません。",
+    "vi": "Sau khi việc hợp nhất tài khoản hoàn tất, nó sẽ không thể bị thu hồi.",
+    "zhTW": "帳號合併完成後不可撤銷。"
+  },
+  "账号识别": {
+    "zhCN": "账号识别",
+    "en": "Account identification",
+    "fr": "Identification du compte",
+    "ru": "Идентификация аккаунта",
+    "ja": "アカウントの識別",
+    "vi": "Nhận dạng tài khoản",
+    "zhTW": "帳號識別"
+  },
+  "账号已解绑": {
+    "zhCN": "账号已解绑",
+    "en": "Account has been unlinked",
+    "fr": "Le compte a été dissocié",
+    "ru": "Аккаунт отключен",
+    "ja": "アカウントのリンクが解除されました",
+    "vi": "Tài khoản đã được hủy liên kết",
+    "zhTW": "帳號已解綁"
+  },
+  "账号中心": {
+    "zhCN": "账号中心",
+    "en": "Account Center",
+    "fr": "Centre de compte",
+    "ru": "Центр учета",
+    "ja": "アカウントセンター",
+    "vi": "Trung tâm tài khoản",
+    "zhTW": "帳號中心"
+  },
+  "这些操作会改变账号归属或登录状态。": {
+    "zhCN": "这些操作会改变账号归属或登录状态。",
+    "en": "These operations will change the account ownership or login status.",
+    "fr": "Ces opérations modifieront la propriété du compte ou le statut de connexion.",
+    "ru": "Эти операции изменят владельца учетной записи или статус входа в систему.",
+    "ja": "これらの操作により、アカウントの所有権またはログイン状態が変更されます。",
+    "vi": "Các thao tác này sẽ thay đổi quyền sở hữu tài khoản hoặc trạng thái đăng nhập.",
+    "zhTW": "這些操作會改變帳號歸屬或登入狀態。"
+  },
+  "正在加载用户...": {
+    "zhCN": "正在加载用户...",
+    "en": "Loading users...",
+    "fr": "Chargement des utilisateurs...",
+    "ru": "Загрузка пользователей...",
+    "ja": "ユーザーを読み込んでいます...",
+    "vi": "Đang tải người dùng...",
+    "zhTW": "正在載入用戶..."
+  },
+  "至少 8 位，且同时包含字母和数字": {
+    "zhCN": "至少 8 位，且同时包含字母和数字",
+    "en": "At least 8 characters and contain both letters and numbers",
+    "fr": "Au moins 8 caractères et contenir à la fois des lettres et des chiffres",
+    "ru": "Минимум 8 символов и содержат как буквы, так и цифры.",
+    "ja": "少なくとも 8 文字で、文字と数字の両方を含む",
+    "vi": "Ít nhất 8 ký tự và chứa cả chữ cái và số",
+    "zhTW": "至少 8 位，且同時包含字母和數字"
+  },
+  "至少 8 位，同时包含字母和数字": {
+    "zhCN": "至少 8 位，同时包含字母和数字",
+    "en": "At least 8 characters, including both letters and numbers",
+    "fr": "Au moins 8 caractères, y compris des lettres et des chiffres",
+    "ru": "Не менее 8 символов, включая буквы и цифры.",
+    "ja": "文字と数字の両方を含む少なくとも 8 文字",
+    "vi": "Ít nhất 8 ký tự, bao gồm cả chữ cái và số",
+    "zhTW": "至少 8 位，同時包含字母和數字"
+  },
+  "中文": {
+    "zhCN": "中文",
+    "en": "Chinese",
+    "fr": "Chinois",
+    "ru": "Китайский",
+    "ja": "中国語",
+    "vi": "Tiếng Trung",
+    "zhTW": "中文"
+  },
+  "重新发送": {
+    "zhCN": "重新发送",
+    "en": "Resend",
+    "fr": "Renvoyer",
+    "ru": "Отправить повторно",
+    "ja": "再送信",
+    "vi": "Gửi lại",
+    "zhTW": "重新發送"
+  },
+  "重新发送验证邮件": {
+    "zhCN": "重新发送验证邮件",
+    "en": "Resend verification email",
+    "fr": "Renvoyer l'e-mail de vérification",
+    "ru": "Повторно отправить письмо с подтверждением",
+    "ja": "確認メールを再送信する",
+    "vi": "Gửi lại email xác minh",
+    "zhTW": "重新發送驗證郵件"
+  },
+  "重置 MFA": {
+    "zhCN": "重置 MFA",
+    "en": "Reset MFA",
+    "fr": "Réinitialiser l'AMF",
+    "ru": "Сбросить МИД",
+    "ja": "MFA をリセット",
+    "vi": "Đặt lại MFA",
+    "zhTW": "重置 MFA"
+  },
+  "重置失败": {
+    "zhCN": "重置失败",
+    "en": "Reset failed",
+    "fr": "Échec de la réinitialisation",
+    "ru": "Ошибка сброса",
+    "ja": "リセット失敗",
+    "vi": "Đặt lại thất bại",
+    "zhTW": "重置失敗"
+  },
+  "主导航": {
+    "zhCN": "主导航",
+    "en": "Main navigation",
+    "fr": "Navigation principale",
+    "ru": "Основная навигация",
+    "ja": "メインナビゲーション",
+    "vi": "Điều hướng chính",
+    "zhTW": "主導航"
+  },
+  "注册": {
+    "zhCN": "注册",
+    "en": "Sign up",
+    "fr": "S'inscrire",
+    "ru": "Регистрация",
+    "ja": "サインアップ",
+    "vi": "Đăng ký",
+    "zhTW": "註冊"
+  },
+  "注册流程必须完成邮箱验证码，当前不可关闭。": {
+    "zhCN": "注册流程必须完成邮箱验证码，当前不可关闭。",
+    "en": "The registration process must complete the email verification code, which cannot be closed at the moment.",
+    "fr": "Le processus d'inscription doit compléter le code de vérification de l'e-mail, qui ne peut pas être fermé pour le moment.",
+    "ru": "Процесс регистрации должен завершить код подтверждения электронной почты, который в данный момент невозможно закрыть.",
+    "ja": "登録プロセスでは電子メール確認コードを完了する必要がありますが、現時点ではこのコードを閉じることはできません。",
+    "vi": "Quá trình đăng ký phải hoàn thành mã xác minh email, mã này hiện không thể đóng được.",
+    "zhTW": "註冊流程必須完成郵箱驗證碼，目前不可關閉。"
+  },
+  "注册邮箱验证": {
+    "zhCN": "注册邮箱验证",
+    "en": "Register email verification",
+    "fr": "Enregistrer la vérification par e-mail",
+    "ru": "Зарегистрировать подтверждение электронной почты",
+    "ja": "メール認証の登録",
+    "vi": "Đăng ký xác minh email",
+    "zhTW": "註冊郵箱驗證"
+  },
+  "注销后将无法继续登录。": {
+    "zhCN": "注销后将无法继续登录。",
+    "en": "After logging out, you will no longer be able to log in.",
+    "fr": "Après vous être déconnecté, vous ne pourrez plus vous connecter.",
+    "ru": "После выхода из системы вы больше не сможете войти в систему.",
+    "ja": "ログアウトするとログインできなくなります。",
+    "vi": "Sau khi đăng xuất, bạn sẽ không thể đăng nhập được nữa.",
+    "zhTW": "登出後將無法繼續登入。"
+  },
+  "注销失败": {
+    "zhCN": "注销失败",
+    "en": "Logout failed",
+    "fr": "Échec de la déconnexion",
+    "ru": "Выход из системы не выполнен",
+    "ja": "ログアウトに失敗しました",
+    "vi": "Đăng xuất không thành công",
+    "zhTW": "註銷失敗"
+  },
+  "注销账户": {
+    "zhCN": "注销账户",
+    "en": "Cancel account",
+    "fr": "Annuler le compte",
+    "ru": "Отменить учетную запись",
+    "ja": "アカウントをキャンセルする",
+    "vi": "Hủy tài khoản",
+    "zhTW": "註銷帳戶"
+  },
+  "状态": {
+    "zhCN": "状态",
+    "en": "Status",
+    "fr": "Statut",
+    "ru": "Статус",
+    "ja": "ステータス",
+    "vi": "Trạng thái",
+    "zhTW": "狀態"
+  },
+  "资料已保存": {
+    "zhCN": "资料已保存",
+    "en": "Data saved",
+    "fr": "Données enregistrées",
+    "ru": "Данные сохранены",
+    "ja": "保存されたデータ",
+    "vi": "Đã lưu dữ liệu",
+    "zhTW": "資料已儲存"
+  },
+  "总授权次数": {
+    "zhCN": "总授权次数",
+    "en": "Total number of authorizations",
+    "fr": "Nombre total d'autorisations",
+    "ru": "Общее количество авторизаций",
+    "ja": "承認の総数",
+    "vi": "Tổng số ủy quyền",
+    "zhTW": "總授權次數"
+  },
+  "最后登录": {
+    "zhCN": "最后登录",
+    "en": "Last Login",
+    "fr": "Dernière connexion",
+    "ru": "Последний вход",
+    "ja": "最終ログイン",
+    "vi": "Lần đăng nhập cuối",
+    "zhTW": "最後登入"
+  },
+  "最近 100 条账号安全事件。": {
+    "zhCN": "最近 100 条账号安全事件。",
+    "en": "The last 100 account security incidents.",
+    "fr": "Les 100 derniers incidents de sécurité du compte.",
+    "ru": "Последние 100 инцидентов безопасности аккаунта.",
+    "ja": "過去 100 件のアカウント セキュリティ インシデント。",
+    "vi": "100 sự cố bảo mật tài khoản gần đây nhất.",
+    "zhTW": "最近 100 則帳號安全事件。"
+  },
+  "最近发生的 OAuth 授权活动": {
+    "zhCN": "最近发生的 OAuth 授权活动",
+    "en": "Recent OAuth authorization activity",
+    "fr": "Activité récente d’autorisation OAuth",
+    "ru": "Недавняя авторизация OAuth",
+    "ja": "最近の OAuth 認証アクティビティ",
+    "vi": "Hoạt động ủy quyền OAuth gần đây",
+    "zhTW": "最近發生的 OAuth 授權活動"
+  },
+  "最近活跃": {
+    "zhCN": "最近活跃",
+    "en": "Recently active",
+    "fr": "Récemment actif",
+    "ru": "Недавно активен",
+    "ja": "最近活動中",
+    "vi": "Hoạt động gần đây",
+    "zhTW": "最近活躍"
+  },
+  "最近授权": {
+    "zhCN": "最近授权",
+    "en": "Recently authorized",
+    "fr": "Récemment autorisé",
+    "ru": "Недавно авторизован",
+    "ja": "最近認可された",
+    "vi": "Được ủy quyền gần đây",
+    "zhTW": "最近授權"
+  },
+  "Authenticator 验证码": {
+    "zhCN": "Authenticator 验证码",
+    "en": "Authenticator verification code",
+    "fr": "Code de vérification de l'authentificateur",
+    "ru": "Код проверки аутентификатора",
+    "ja": "認証コードの確認コード",
+    "vi": "Mã xác minh người xác thực",
+    "zhTW": "Authenticator 驗證碼"
+  },
+  "JPG、PNG 或 WebP，最大 2MB": {
+    "zhCN": "JPG、PNG 或 WebP，最大 2MB",
+    "en": "JPG, PNG or WebP, up to 2MB",
+    "fr": "JPG, PNG ou WebP, jusqu'à 2 Mo",
+    "ru": "JPG, PNG или WebP, до 2 МБ.",
+    "ja": "JPG、PNG、または WebP、最大 2MB",
+    "vi": "JPG, PNG hoặc WebP, tối đa 2MB",
+    "zhTW": "JPG、PNG 或 WebP，最大 2MB"
+  },
+  "MFA 设置失败": {
+    "zhCN": "MFA 设置失败",
+    "en": "MFA setup failed",
+    "fr": "Échec de la configuration MFA",
+    "ru": "Не удалось настроить MFA",
+    "ja": "MFA セットアップに失敗しました",
+    "vi": "Thiết lập MFA không thành công",
+    "zhTW": "MFA 設定失敗"
+  },
+  "MFA 验证码或备用码": {
+    "zhCN": "MFA 验证码或备用码",
+    "en": "MFA verification code or backup code",
+    "fr": "Code de vérification MFA ou code de sauvegarde",
+    "ru": "Код проверки MFA или резервный код",
+    "ja": "MFA 検証コードまたはバックアップ コード",
+    "vi": "Mã xác minh MFA hoặc mã dự phòng",
+    "zhTW": "MFA 驗證碼或備用碼"
+  },
+  "MFA 验证失败": {
+    "zhCN": "MFA 验证失败",
+    "en": "MFA verification failed",
+    "fr": "Échec de la vérification MFA",
+    "ru": "Проверка МИД не удалась",
+    "ja": "MFA検証に失敗しました",
+    "vi": "Xác minh MFA không thành công",
+    "zhTW": "MFA 驗證失敗"
+  },
+  "MFA 已启用": {
+    "zhCN": "MFA 已启用",
+    "en": "MFA is enabled",
+    "fr": "MFA est activé",
+    "ru": "Многофакторная аутентификация включена",
+    "ja": "MFA が有効になっている",
+    "vi": "MFA được kích hoạt",
+    "zhTW": "MFA 已啟用"
+  },
+  "MFA 已停用": {
+    "zhCN": "MFA 已停用",
+    "en": "MFA is disabled",
+    "fr": "MFA est désactivé",
+    "ru": "МИД отключен",
+    "ja": "MFA が無効になっています",
+    "vi": "MFA bị vô hiệu hóa",
+    "zhTW": "MFA 已停用"
+  },
+  "MFA 已重置": {
+    "zhCN": "MFA 已重置",
+    "en": "MFA has been reset",
+    "fr": "MFA a été réinitialisé",
+    "ru": "МИД был сброшен",
+    "ja": "MFAがリセットされました",
+    "vi": "MFA đã được thiết lập lại",
+    "zhTW": "MFA 已重置"
+  },
+  "OAuth 集成": {
+    "zhCN": "OAuth 集成",
+    "en": "OAuth Integrations",
+    "fr": "Intégrations OAuth",
+    "ru": "Интеграции OAuth",
+    "ja": "OAuth連携",
+    "vi": "Tích hợp OAuth",
+    "zhTW": "OAuth 整合"
+  },
+  "OAuth 授权结束后跳转回的地址，务必填写正确": {
+    "zhCN": "OAuth 授权结束后跳转回的地址，务必填写正确",
+    "en": "The address to jump back to after OAuth authorization is completed. Be sure to fill it in correctly.",
+    "fr": "Adresse à laquelle revenir une fois l'autorisation OAuth terminée. Assurez-vous de le remplir correctement.",
+    "ru": "Адрес, на который нужно вернуться после завершения авторизации OAuth. Обязательно заполните его правильно.",
+    "ja": "OAuth 認証が完了した後にジャンプして戻るアドレス。必ず正確にご記入ください。",
+    "vi": "Địa chỉ để quay lại sau khi quá trình ủy quyền OAuth hoàn tất. Hãy chắc chắn để điền nó vào một cách chính xác.",
+    "zhTW": "OAuth 授權結束後跳轉回的地址，務必填寫正確"
+  },
+  "PoW 服务地址": {
+    "zhCN": "PoW 服务地址",
+    "en": "PoW service address",
+    "fr": "Adresse du service PoW",
+    "ru": "Адрес службы PoW",
+    "ja": "PoWサービスアドレス",
+    "vi": "Địa chỉ dịch vụ PoW",
+    "zhTW": "PoW 服務地址"
+  },
+  "SMTP 端口": {
+    "zhCN": "SMTP 端口",
+    "en": "SMTP port",
+    "fr": "Port SMTP",
+    "ru": "SMTP-порт",
+    "ja": "SMTPポート",
+    "vi": "Cổng SMTP",
+    "zhTW": "SMTP 連接埠"
+  },
+  "SMTP 密码": {
+    "zhCN": "SMTP 密码",
+    "en": "SMTP password",
+    "fr": "Mot de passe SMTP",
+    "ru": "SMTP-пароль",
+    "ja": "SMTPパスワード",
+    "vi": "Mật khẩu SMTP",
+    "zhTW": "SMTP 密碼"
+  },
+  "SMTP 用户名": {
+    "zhCN": "SMTP 用户名",
+    "en": "SMTP username",
+    "fr": "Nom d'utilisateur SMTP",
+    "ru": "Имя пользователя SMTP",
+    "ja": "SMTPユーザー名",
+    "vi": "tên người dùng SMTP",
+    "zhTW": "SMTP 使用者名稱"
+  },
+  "SMTP 主机": {
+    "zhCN": "SMTP 主机",
+    "en": "SMTP Host",
+    "fr": "Hôte SMTP",
+    "ru": "Хост SMTP",
+    "ja": "SMTPホスト",
+    "vi": "Máy chủ SMTP",
+    "zhTW": "SMTP 主機"
+  },
+  "Telegram 登录失败": {
+    "zhCN": "Telegram 登录失败",
+    "en": "Telegram login failed",
+    "fr": "La connexion au télégramme a échoué",
+    "ru": "Не удалось войти в Telegram",
+    "ja": "テレグラムへのログインに失敗しました",
+    "vi": "Đăng nhập Telegram không thành công",
+    "zhTW": "Telegram 登入失敗"
+  }
+}

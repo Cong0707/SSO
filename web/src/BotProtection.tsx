@@ -20,6 +20,7 @@ export type CaptchaConfig = {
 
 export function BotProtectionChallenge(props: {
   config: CaptchaConfig;
+  locale: string;
   onVerify: (token: string) => void;
   onExpire: () => void;
 }) {
@@ -34,6 +35,7 @@ export function BotProtectionChallenge(props: {
 
 function Turnstile(props: {
   siteKey: string;
+  locale: string;
   onVerify: (token: string) => void;
   onExpire: () => void;
 }) {
@@ -51,6 +53,7 @@ function Turnstile(props: {
       host.current.replaceChildren();
       widgetId = window.turnstile.render(host.current, {
         sitekey: props.siteKey,
+        language: props.locale,
         callback: (token: string) => verifyRef.current(token),
         "error-callback": () => expireRef.current(),
         "expired-callback": () => expireRef.current(),
@@ -59,7 +62,8 @@ function Turnstile(props: {
     const id = "xem-sso-turnstile";
     const existing = document.getElementById(id) as HTMLScriptElement | null;
     if (window.turnstile) render();
-    else if (existing) existing.addEventListener("load", render, { once: true });
+    else if (existing)
+      existing.addEventListener("load", render, { once: true });
     else {
       const script = document.createElement("script");
       script.id = id;
@@ -74,12 +78,13 @@ function Turnstile(props: {
       if (widgetId) window.turnstile?.remove?.(widgetId);
       existing?.removeEventListener("load", render);
     };
-  }, [props.siteKey]);
+  }, [props.locale, props.siteKey]);
   return <div className="captcha-widget" ref={host} />;
 }
 
 function CapWidget(props: {
   endpoint: string;
+  locale: string;
   onVerify: (token: string) => void;
   onExpire: () => void;
 }) {
@@ -103,7 +108,7 @@ function CapWidget(props: {
       widget = document.createElement("cap-widget");
       widget.setAttribute("data-cap-api-endpoint", props.endpoint);
       widget.setAttribute("data-cap-hidden-field-name", "cap_token");
-      widget.setAttribute("data-cap-lang", "zh-CN");
+      widget.setAttribute("data-cap-lang", props.locale);
       widget.addEventListener("solve", solved);
       widget.addEventListener("reset", reset);
       widget.addEventListener("error", reset);
@@ -116,6 +121,6 @@ function CapWidget(props: {
       widget?.removeEventListener("error", reset);
       widget?.remove();
     };
-  }, [props.endpoint]);
+  }, [props.endpoint, props.locale]);
   return <div className="captcha-widget" ref={host} />;
 }

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { FormEvent, ReactNode, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Link,
@@ -45,7 +45,16 @@ import {
 } from "lucide-react";
 import { api, apiForm, setCsrf } from "./lib/api";
 import { BotProtectionChallenge, CaptchaConfig } from "./BotProtection";
-
+import {
+  currentLocale,
+  LANGUAGE_OPTIONS,
+  LocaleCode,
+  normalizeLocale,
+  setActiveLocale,
+  toIntlLocale,
+  tr,
+  trf,
+} from "./i18n";
 type User = {
   id: number;
   username: string;
@@ -93,8 +102,10 @@ type Provider = {
   bound: boolean;
   bot_username?: string;
 };
-type Toast = { message: string; tone?: "error" | "success" };
-
+type Toast = {
+  message: string;
+  tone?: "error" | "success";
+};
 const copy = {
   zh: {
     dashboard: "仪表盘",
@@ -151,12 +162,16 @@ const copy = {
     connected: "已连接",
   },
 } as const;
-
 function useLocale() {
-  const t = (key: keyof typeof copy.zh) => copy.zh[key];
-  return { t };
+  const [locale, setLocale] = useState<LocaleCode>(currentLocale);
+  const changeLocale = useCallback((value: string) => {
+    const normalized = setActiveLocale(value);
+    setLocale(normalized);
+    return normalized;
+  }, []);
+  const t = (key: keyof typeof copy.zh) => tr(copy.zh[key]);
+  return { locale, changeLocale, t };
 }
-
 export function App() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -177,14 +192,44 @@ export function App() {
       setChecking(false);
       return;
     }
-    api<{ user: User; csrf_token: string }>("/api/auth/me")
+    api<{
+      user: User;
+      csrf_token: string;
+    }>("/api/auth/me")
       .then((data) => {
         setUser(data.user);
         setCsrf(data.csrf_token);
+        i18n.changeLocale(data.user.locale);
       })
       .catch(() => setUser(null))
       .finally(() => setChecking(false));
-  }, [location.pathname]);
+  }, [i18n.changeLocale, location.pathname]);
+  const acceptUser = async (nextUser: User) => {
+    const locale = i18n.locale;
+    const localizedUser = { ...nextUser, locale };
+    setUser(localizedUser);
+    try {
+      await api<User>("/api/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ locale }),
+      });
+    } catch {
+      // Authentication has succeeded even if saving this preference fails.
+    }
+  };
+  const changeLocale = async (value: string) => {
+    const locale = i18n.changeLocale(value);
+    if (!user) return;
+    setUser({ ...user, locale });
+    try {
+      await api<User>("/api/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ locale }),
+      });
+    } catch (error) {
+      show(error instanceof Error ? error.message : tr("保存失败"), "error");
+    }
+  };
   const show = (message: string, tone?: Toast["tone"]) => {
     setToast({ message, tone });
     window.setTimeout(() => setToast(null), 3200);
@@ -201,7 +246,9 @@ export function App() {
       <>
         <AuthPage
           mode="login"
-          onUser={setUser}
+          locale={i18n.locale}
+          onLocaleChange={changeLocale}
+          onUser={acceptUser}
           t={i18n.t}
           show={show}
         />
@@ -213,7 +260,9 @@ export function App() {
       <>
         <AuthPage
           mode="register"
-          onUser={setUser}
+          locale={i18n.locale}
+          onLocaleChange={changeLocale}
+          onUser={acceptUser}
           t={i18n.t}
           show={show}
         />
@@ -245,6 +294,8 @@ export function App() {
         user={user}
         setUser={setUser}
         t={i18n.t}
+        locale={i18n.locale}
+        onLocaleChange={changeLocale}
         dark={dark}
         setDark={setDark}
         show={show}
@@ -255,12 +306,13 @@ export function App() {
     </>
   );
 }
-
 type T = (key: keyof typeof copy.zh) => string;
 function Shell(props: {
   user: User;
   setUser: (user: User | null) => void;
   t: T;
+  locale: LocaleCode;
+  onLocaleChange: (value: string) => void;
   dark: boolean;
   setDark: (value: boolean) => void;
   show: (message: string, tone?: Toast["tone"]) => void;
@@ -283,8 +335,16 @@ function Shell(props: {
   const adminItems =
     props.user.role === "admin"
       ? [
-          { path: "/admin/users", label: "用户管理", icon: Users },
-          { path: "/admin/settings", label: "系统设置", icon: Settings2 },
+          {
+            path: "/admin/users",
+            label: tr("用户管理"),
+            icon: Users,
+          },
+          {
+            path: "/admin/settings",
+            label: tr("系统设置"),
+            icon: Settings2,
+          },
         ]
       : [];
   const allItems = [...items, ...adminItems];
@@ -294,7 +354,10 @@ function Shell(props: {
       props.setUser(null);
       navigate("/login");
     } catch (error) {
-      props.show(error instanceof Error ? error.message : "退出失败", "error");
+      props.show(
+        error instanceof Error ? error.message : tr("退出失败"),
+        "error",
+      );
     }
   }
   return (
@@ -303,7 +366,7 @@ function Shell(props: {
         <div className="sidebar-brand">
           <span>xem SSO</span>
         </div>
-        <div className="workspace-label">账号中心</div>
+        <div className="workspace-label">{tr("账号中心")}</div>
         <nav>
           {items.map((item) => {
             const Icon = item.icon;
@@ -321,7 +384,7 @@ function Shell(props: {
         </nav>
         {adminItems.length > 0 && (
           <>
-            <div className="workspace-label admin-label">管理</div>
+            <div className="workspace-label admin-label">{tr("管理")}</div>
             <nav>
               {adminItems.map((item) => {
                 const Icon = item.icon;
@@ -361,13 +424,24 @@ function Shell(props: {
                   </Link>
                   <button onClick={() => props.setDark(!props.dark)}>
                     <Moon size={15} />
-                    {props.dark ? "浅色模式" : "深色模式"}
+                    {props.dark ? tr("浅色模式") : tr("深色模式")}
                   </button>
-                  <div className="popover-static">
+                  <label className="popover-language">
                     <Languages size={15} />
-                    <span>语言</span>
-                    <strong>中文</strong>
-                  </div>
+                    <span>{tr("语言")}</span>
+                    <select
+                      value={props.locale}
+                      onChange={(event) =>
+                        props.onLocaleChange(event.target.value)
+                      }
+                    >
+                      {LANGUAGE_OPTIONS.map((language) => (
+                        <option key={language.code} value={language.code}>
+                          {language.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <button onClick={logout}>
                     <LogOut size={15} />
                     {props.t("logout")}
@@ -379,14 +453,16 @@ function Shell(props: {
         </header>
         <main className="page-content">{props.children}</main>
       </div>
-      <nav className="mobile-bottom-nav" aria-label="主导航">
+      <nav className="mobile-bottom-nav" aria-label={tr("主导航")}>
         {allItems.map((item) => {
           const Icon = item.icon;
           return (
             <Link
               key={item.path}
               to={item.path}
-              className={location.pathname.startsWith(item.path) ? "active" : ""}
+              className={
+                location.pathname.startsWith(item.path) ? "active" : ""
+              }
             >
               <Icon size={17} />
               <span>{item.label}</span>
@@ -397,7 +473,6 @@ function Shell(props: {
     </div>
   );
 }
-
 function PageRouter(props: {
   user: User;
   setUser: (user: User) => void;
@@ -431,7 +506,6 @@ function PageRouter(props: {
     );
   return <DashboardPage t={props.t} show={props.show} />;
 }
-
 function Avatar({
   user,
   small = false,
@@ -519,7 +593,7 @@ function Modal(props: {
           <button
             className="icon-button"
             onClick={props.onClose}
-            aria-label="关闭"
+            aria-label={tr("关闭")}
           >
             <X size={18} />
           </button>
@@ -576,7 +650,9 @@ function Input(
   );
 }
 function Select(
-  props: React.SelectHTMLAttributes<HTMLSelectElement> & { label?: string },
+  props: React.SelectHTMLAttributes<HTMLSelectElement> & {
+    label?: string;
+  },
 ) {
   const { label, children, ...selectProps } = props;
   return (
@@ -598,15 +674,16 @@ function Empty({ text }: { text: string }) {
 }
 function formatDate(value?: string) {
   if (!value) return "—";
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(toIntlLocale(currentLocale()), {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
 }
-
 function AuthPage(props: {
   mode: "login" | "register";
-  onUser: (user: User) => void;
+  locale: LocaleCode;
+  onLocaleChange: (value: string) => void;
+  onUser: (user: User) => Promise<void>;
   t: T;
   show: (message: string, tone?: Toast["tone"]) => void;
 }) {
@@ -676,7 +753,10 @@ function AuthPage(props: {
       setFlowMode(data.mode);
       setStep(2);
     } catch (error) {
-      props.show(error instanceof Error ? error.message : "请求失败", "error");
+      props.show(
+        error instanceof Error ? error.message : tr("请求失败"),
+        "error",
+      );
     } finally {
       setBusy(false);
     }
@@ -713,11 +793,14 @@ function AuthPage(props: {
         if (data.mfa_required) {
           setStep(3);
         } else if (data.user && data.csrf_token) {
-          finish(data.user, data.csrf_token);
+          await finish(data.user, data.csrf_token);
         }
       }
     } catch (error) {
-      props.show(error instanceof Error ? error.message : "请求失败", "error");
+      props.show(
+        error instanceof Error ? error.message : tr("请求失败"),
+        "error",
+      );
     } finally {
       setBusy(false);
     }
@@ -726,7 +809,10 @@ function AuthPage(props: {
     event.preventDefault();
     setBusy(true);
     try {
-      const data = await api<{ user: User; csrf_token: string }>(
+      const data = await api<{
+        user: User;
+        csrf_token: string;
+      }>(
         flowMode === "register"
           ? "/api/auth/register/complete"
           : "/api/auth/login/mfa",
@@ -735,31 +821,40 @@ function AuthPage(props: {
           body: JSON.stringify({ flow_token: flowToken, code }),
         },
       );
-      finish(data.user, data.csrf_token);
+      await finish(data.user, data.csrf_token);
     } catch (error) {
-      props.show(error instanceof Error ? error.message : "验证失败", "error");
+      props.show(
+        error instanceof Error ? error.message : tr("验证失败"),
+        "error",
+      );
     } finally {
       setBusy(false);
     }
   }
-  function finish(user: User, csrf: string) {
+  async function finish(user: User, csrf: string) {
     setCsrf(csrf);
-    props.onUser(user);
+    await props.onUser(user);
     navigate(mergeToken ? "/profile?merged=1" : requestedReturnTo);
   }
   async function resend() {
     if (countdown > 0 || busy) return;
     setBusy(true);
     try {
-      const data = await api<{ debug_code?: string; resend_after: number }>(
-        "/api/auth/email/resend",
-        { method: "POST", body: JSON.stringify({ flow_token: flowToken }) },
-      );
+      const data = await api<{
+        debug_code?: string;
+        resend_after: number;
+      }>("/api/auth/email/resend", {
+        method: "POST",
+        body: JSON.stringify({ flow_token: flowToken }),
+      });
       setDebugCode(data.debug_code || "");
       setCountdown(data.resend_after || 60);
-      props.show("验证码已重新发送", "success");
+      props.show(tr("验证码已重新发送"), "success");
     } catch (error) {
-      props.show(error instanceof Error ? error.message : "发送失败", "error");
+      props.show(
+        error instanceof Error ? error.message : tr("发送失败"),
+        "error",
+      );
     } finally {
       setBusy(false);
     }
@@ -780,24 +875,38 @@ function AuthPage(props: {
     setCaptchaToken("");
   }
   const title = mergeToken
-    ? "登录要合并的账号"
+    ? tr("登录要合并的账号")
     : step === 1
-      ? "登录或注册"
+      ? tr("登录或注册")
       : flowMode === "register"
         ? step === 2
-          ? "创建账号"
-          : "验证邮箱"
+          ? tr("创建账号")
+          : tr("验证邮箱")
         : step === 2
-          ? "输入密码"
-          : "二次验证";
+          ? tr("输入密码")
+          : tr("二次验证");
   return (
     <div className="auth-layout">
       <div className="auth-brand">
         <span>xem SSO</span>
       </div>
+      <label className="auth-language">
+        <Languages size={16} />
+        <select
+          aria-label={tr("语言")}
+          value={props.locale}
+          onChange={(event) => props.onLocaleChange(event.target.value)}
+        >
+          {LANGUAGE_OPTIONS.map((language) => (
+            <option key={language.code} value={language.code}>
+              {language.label}
+            </option>
+          ))}
+        </select>
+      </label>
       <div className="auth-card">
         <div className="eyebrow">xem SSO</div>
-        <div className="auth-steps" aria-label="认证进度">
+        <div className="auth-steps" aria-label={tr("认证进度")}>
           {[1, 2, 3].map((value) => (
             <span key={value} className={step >= value ? "active" : ""} />
           ))}
@@ -805,13 +914,13 @@ function AuthPage(props: {
         <h1>{title}</h1>
         <p className="auth-lead">
           {mergeToken
-            ? "请使用另一个账号完成验证。"
-            : "使用一个账号访问你的应用、授权和安全设置。"}
+            ? tr("请使用另一个账号完成验证。")
+            : tr("使用一个账号访问你的应用、授权和安全设置。")}
         </p>
         {step === 1 && (
           <form onSubmit={identifyAccount} className="form-stack">
             <Input
-              label="邮箱"
+              label={tr("邮箱")}
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -820,6 +929,7 @@ function AuthPage(props: {
             />
             <BotProtectionChallenge
               config={authConfig.captcha}
+              locale={toIntlLocale(props.locale)}
               onVerify={setCaptchaToken}
               onExpire={() => setCaptchaToken("")}
             />
@@ -836,7 +946,7 @@ function AuthPage(props: {
                 )
               }
             >
-              下一步
+              {tr("下一步")}
             </Button>
           </form>
         )}
@@ -852,16 +962,18 @@ function AuthPage(props: {
             />
             {flowMode === "register" && (
               <Input
-                label="用户名"
+                label={tr("用户名")}
                 value={registrationUsername}
-                onChange={(event) => setRegistrationUsername(event.target.value)}
+                onChange={(event) =>
+                  setRegistrationUsername(event.target.value)
+                }
                 autoComplete="username"
-                hint="3-32 位字母、数字、下划线或连字符"
+                hint={tr("3-32 位字母、数字、下划线或连字符")}
                 required
               />
             )}
             <Input
-              label="密码"
+              label={tr("密码")}
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -871,13 +983,13 @@ function AuthPage(props: {
               required
               hint={
                 flowMode === "register"
-                  ? "至少 8 位，同时包含字母和数字"
+                  ? tr("至少 8 位，同时包含字母和数字")
                   : undefined
               }
             />
             {flowMode === "register" && (
               <Input
-                label="确认密码"
+                label={tr("确认密码")}
                 type="password"
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
@@ -891,14 +1003,14 @@ function AuthPage(props: {
                 onClick={back}
                 icon={<ArrowLeft size={16} />}
               >
-                返回
+                {tr("返回")}
               </Button>
               <Button
                 type="submit"
                 disabled={busy}
                 icon={<ArrowRight size={16} />}
               >
-                下一步
+                {tr("下一步")}
               </Button>
             </div>
           </form>
@@ -906,7 +1018,9 @@ function AuthPage(props: {
         {step === 3 && (
           <form onSubmit={submitVerification} className="form-stack">
             <Input
-              label={flowMode === "register" ? "邮箱验证码" : "2FA 验证码"}
+              label={
+                flowMode === "register" ? tr("邮箱验证码") : tr("2FA 验证码")
+              }
               value={code}
               onChange={(event) => setCode(event.target.value)}
               inputMode="numeric"
@@ -915,7 +1029,8 @@ function AuthPage(props: {
             />
             {debugCode && (
               <div className="debug-code">
-                本地调试验证码：<code>{debugCode}</code>
+                {tr("本地调试验证码：")}
+                <code>{debugCode}</code>
               </div>
             )}
             <div className="auth-actions">
@@ -924,7 +1039,7 @@ function AuthPage(props: {
                 onClick={back}
                 icon={<ArrowLeft size={16} />}
               >
-                返回
+                {tr("返回")}
               </Button>
               {flowMode === "register" && (
                 <Button
@@ -932,7 +1047,9 @@ function AuthPage(props: {
                   onClick={resend}
                   disabled={countdown > 0 || busy}
                 >
-                  {countdown > 0 ? `重新发送（${countdown}s）` : "重新发送"}
+                  {countdown > 0
+                    ? trf("重新发送（{{seconds}}s）", { seconds: countdown })
+                    : tr("重新发送")}
                 </Button>
               )}
               <Button
@@ -940,7 +1057,7 @@ function AuthPage(props: {
                 disabled={busy}
                 icon={<ArrowRight size={16} />}
               >
-                完成
+                {tr("完成")}
               </Button>
             </div>
           </form>
@@ -948,7 +1065,7 @@ function AuthPage(props: {
         {step === 1 && visibleProviders.length > 0 && (
           <div className="auth-providers">
             <div className="divider">
-              <span>第三方登录 / 注册</span>
+              <span>{tr("第三方登录 / 注册")}</span>
             </div>
             <div className="provider-grid">
               {visibleProviders.map((provider) =>
@@ -968,7 +1085,7 @@ function AuthPage(props: {
                   >
                     <ProviderIcon kind={provider.kind} />
                     <span>{provider.display_name}</span>
-                    <small>登录 / 注册</small>
+                    <small>{tr("登录 / 注册")}</small>
                   </a>
                 ),
               )}
@@ -976,22 +1093,18 @@ function AuthPage(props: {
           </div>
         )}
         {!authConfig.registration_enabled && step === 1 && (
-          <div className="auth-switch">当前仅允许已有账号登录</div>
+          <div className="auth-switch">{tr("当前仅允许已有账号登录")}</div>
         )}
       </div>
-      <div className="auth-footer">
-        xem SSO · OAuth 2.0 / OpenID Connect
-      </div>
+      <div className="auth-footer">xem SSO · OAuth 2.0 / OpenID Connect</div>
     </div>
   );
 }
-
 declare global {
   interface Window {
     XemSSOTelegramAuth?: (user: Record<string, unknown>) => void;
   }
 }
-
 function TelegramLoginButton(props: {
   provider: Provider;
   mergeToken: string;
@@ -1004,20 +1117,20 @@ function TelegramLoginButton(props: {
     if (!container || !props.provider.bot_username) return;
     window.XemSSOTelegramAuth = async (telegramUser) => {
       try {
-        const data = await api<{ user: User; csrf_token: string }>(
-          "/api/auth/telegram",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              ...telegramUser,
-              merge_token: props.mergeToken,
-            }),
-          },
-        );
+        const data = await api<{
+          user: User;
+          csrf_token: string;
+        }>("/api/auth/telegram", {
+          method: "POST",
+          body: JSON.stringify({
+            ...telegramUser,
+            merge_token: props.mergeToken,
+          }),
+        });
         props.onSuccess(data.user, data.csrf_token);
       } catch (error) {
         props.onError(
-          error instanceof Error ? error.message : "Telegram 登录失败",
+          error instanceof Error ? error.message : tr("Telegram 登录失败"),
         );
       }
     };
@@ -1043,7 +1156,6 @@ function TelegramLoginButton(props: {
     </div>
   );
 }
-
 function ProviderIcon({ kind }: { kind: string }) {
   if (kind === "email") return <Mail size={17} />;
   if (kind === "github") return <Github size={17} />;
@@ -1053,7 +1165,6 @@ function ProviderIcon({ kind }: { kind: string }) {
   if (kind === "wechat") return <MessageCircle size={17} />;
   return <Shield size={17} />;
 }
-
 function DashboardPage({
   t,
   show,
@@ -1083,7 +1194,7 @@ function DashboardPage({
     <>
       <PageHeader
         title={t("dashboard")}
-        description="管理应用接入与账号安全。"
+        description={tr("管理应用接入与账号安全。")}
         action={
           <Link className="button primary" to="/apps/new">
             <Plus size={16} />
@@ -1095,7 +1206,7 @@ function DashboardPage({
         <Stat icon={<AppWindow />} label={t("apps")} value={data?.apps ?? 0} />
         <Stat
           icon={<Activity />}
-          label="总授权次数"
+          label={tr("总授权次数")}
           value={data?.authorizations ?? 0}
         />
         <Stat
@@ -1112,38 +1223,41 @@ function DashboardPage({
       <div className="content-grid">
         <Panel
           title={t("recent")}
-          description="最近发生的 OAuth 授权活动"
+          description={tr("最近发生的 OAuth 授权活动")}
           className="wide-panel"
         >
           <Table
-            headers={["应用", "用户", "Scope", "时间", "状态"]}
+            headers={[tr("应用"), tr("用户"), "Scope", tr("时间"), tr("状态")]}
             rows={
               data?.recent_authorizations?.map((item) => [
-                <strong key="app">{item.app?.name || "应用"}</strong>,
-                "你",
+                <strong key="app">{item.app?.name || tr("应用")}</strong>,
+                tr("你"),
                 <code key="scope">{item.scopes || "openid"}</code>,
                 formatDate(item.created_at),
                 <Badge
                   key="status"
                   tone={item.status === "approved" ? "success" : "muted"}
                 >
-                  {item.status === "approved" ? "已允许" : item.status}
+                  {item.status === "approved" ? tr("已允许") : item.status}
                 </Badge>,
               ]) || []
             }
             empty={t("noData")}
           />
         </Panel>
-        <Panel title={t("appAccess")} description="管理 OAuth2 / OIDC 应用">
+        <Panel
+          title={t("appAccess")}
+          description={tr("管理 OAuth2 / OIDC 应用")}
+        >
           <div className="quick-access">
             <Link to="/apps/new">
               <Plus size={17} />
-              <span>申请接入</span>
+              <span>{tr("申请接入")}</span>
               <ArrowRight size={16} />
             </Link>
             <Link to="/profile">
               <ShieldCheck size={17} />
-              <span>检查账号安全</span>
+              <span>{tr("检查账号安全")}</span>
               <ArrowRight size={16} />
             </Link>
           </div>
@@ -1213,7 +1327,6 @@ function Table({
     </div>
   );
 }
-
 function AppsPage({
   t,
   show,
@@ -1231,20 +1344,20 @@ function AppsPage({
     void load();
   }, []);
   async function remove(id: number) {
-    if (!window.confirm("确认删除这个应用？")) return;
+    if (!window.confirm(tr("确认删除这个应用？"))) return;
     try {
       await api(`/api/apps/${id}`, { method: "DELETE" });
-      show("应用已删除", "success");
+      show(tr("应用已删除"), "success");
       void load();
     } catch (error) {
-      show(error instanceof Error ? error.message : "删除失败", "error");
+      show(error instanceof Error ? error.message : tr("删除失败"), "error");
     }
   }
   return (
     <>
       <PageHeader
         title={t("apps")}
-        description="管理 OAuth2 / OIDC 应用"
+        description={tr("管理 OAuth2 / OIDC 应用")}
         action={
           <Button
             onClick={() => navigate("/apps/new")}
@@ -1261,8 +1374,8 @@ function AppsPage({
             t("description"),
             "Client ID",
             t("callback"),
-            "创建时间",
-            "操作",
+            tr("创建时间"),
+            tr("操作"),
           ]}
           rows={apps.map((app) => [
             <div className="app-cell" key="name">
@@ -1283,7 +1396,7 @@ function AppsPage({
                 onClick={() => navigate(`/apps/${app.id}`)}
                 icon={<Settings2 size={15} />}
               >
-                编辑
+                {tr("编辑")}
               </Button>
               <Button
                 variant="ghost"
@@ -1300,7 +1413,6 @@ function AppsPage({
     </>
   );
 }
-
 function AppFormPage({
   t,
   show,
@@ -1340,17 +1452,20 @@ function AppFormPage({
     event.preventDefault();
     setBusy(true);
     try {
-      const data = await api<{ app: AppRecord; client_secret?: string }>(
-        id ? `/api/apps/${id}` : "/api/apps",
-        { method: id ? "PATCH" : "POST", body: JSON.stringify(form) },
-      );
+      const data = await api<{
+        app: AppRecord;
+        client_secret?: string;
+      }>(id ? `/api/apps/${id}` : "/api/apps", {
+        method: id ? "PATCH" : "POST",
+        body: JSON.stringify(form),
+      });
       if (data.client_secret) setSecret(data.client_secret);
       else {
-        show("应用已更新", "success");
+        show(tr("应用已更新"), "success");
         navigate("/apps");
       }
     } catch (error) {
-      show(error instanceof Error ? error.message : "保存失败", "error");
+      show(error instanceof Error ? error.message : tr("保存失败"), "error");
     } finally {
       setBusy(false);
     }
@@ -1358,12 +1473,12 @@ function AppFormPage({
   return (
     <>
       <PageHeader
-        title={id ? "编辑应用" : "创建应用"}
-        description="创建一个新的 OAuth2 / OIDC 应用"
+        title={id ? tr("编辑应用") : tr("创建应用")}
+        description={tr("创建一个新的 OAuth2 / OIDC 应用")}
         action={
           <Link className="button secondary" to="/apps">
             <ArrowLeft size={16} />
-            返回应用列表
+            {tr("返回应用列表")}
           </Link>
         }
       />
@@ -1386,7 +1501,7 @@ function AppFormPage({
           />
           <Input
             label={t("description")}
-            placeholder="描述你的应用…"
+            placeholder={tr("描述你的应用…")}
             value={form.description}
             onChange={(event) =>
               setForm({ ...form, description: event.target.value })
@@ -1400,7 +1515,7 @@ function AppFormPage({
               setForm({ ...form, redirect_uri: event.target.value })
             }
             required
-            hint="OAuth 授权结束后跳转回的地址，务必填写正确"
+            hint={tr("OAuth 授权结束后跳转回的地址，务必填写正确")}
           />
           <Input
             label={t("logo")}
@@ -1418,7 +1533,7 @@ function AppFormPage({
                 setForm({ ...form, public: event.target.checked })
               }
             />
-            <span>公共客户端（必须使用 PKCE）</span>
+            <span>{tr("公共客户端（必须使用 PKCE）")}</span>
           </label>
           <Button
             type="submit"
@@ -1437,8 +1552,8 @@ function AppFormPage({
       </Panel>
       {secret && (
         <Panel
-          title="客户端密钥已生成"
-          description="此密钥只会显示一次，请立即复制并妥善保存。"
+          title={tr("客户端密钥已生成")}
+          description={tr("此密钥只会显示一次，请立即复制并妥善保存。")}
           className="secret-panel"
         >
           <div className="secret-value">
@@ -1455,14 +1570,13 @@ function AppFormPage({
             </button>
           </div>
           <Link className="button secondary" to="/apps">
-            完成
+            {tr("完成")}
           </Link>
         </Panel>
       )}
     </>
   );
 }
-
 function AuthorizationsPage({ t }: { t: T }) {
   const [logs, setLogs] = useState<
     Array<{
@@ -1482,10 +1596,13 @@ function AuthorizationsPage({ t }: { t: T }) {
   }, []);
   return (
     <>
-      <PageHeader title={t("authorizations")} description="查看应用授权记录" />
+      <PageHeader
+        title={t("authorizations")}
+        description={tr("查看应用授权记录")}
+      />
       <Panel>
         <Table
-          headers={["应用", "操作", "授权范围", "IP", "时间"]}
+          headers={[tr("应用"), tr("操作"), tr("授权范围"), "IP", tr("时间")]}
           rows={logs.map((item) => [
             <strong key="name">{item.app?.name || "—"}</strong>,
             item.action,
@@ -1507,7 +1624,12 @@ function GrantsPage({
   show: (message: string, tone?: Toast["tone"]) => void;
 }) {
   const [grants, setGrants] = useState<
-    Array<{ id: number; app: AppRecord; scopes: string; created_at: string }>
+    Array<{
+      id: number;
+      app: AppRecord;
+      scopes: string;
+      created_at: string;
+    }>
   >([]);
   const load = () =>
     api<typeof grants>("/api/grants")
@@ -1519,21 +1641,21 @@ function GrantsPage({
   async function revoke(id: number) {
     try {
       await api(`/api/grants/${id}`, { method: "DELETE" });
-      show("授权已撤销", "success");
+      show(tr("授权已撤销"), "success");
       void load();
     } catch (error) {
-      show(error instanceof Error ? error.message : "撤销失败", "error");
+      show(error instanceof Error ? error.message : tr("撤销失败"), "error");
     }
   }
   return (
     <>
       <PageHeader
         title={t("grants")}
-        description="管理你已允许哪些应用调用你的资源 API"
+        description={tr("管理你已允许哪些应用调用你的资源 API")}
       />
       <Panel>
         <Table
-          headers={["应用", "能力", "授权时间", "操作"]}
+          headers={[tr("应用"), tr("能力"), tr("授权时间"), tr("操作")]}
           rows={grants.map((item) => [
             <div className="app-cell" key="app">
               {item.app?.logo_url ? (
@@ -1560,7 +1682,6 @@ function GrantsPage({
     </>
   );
 }
-
 function ConsentPage({
   t,
   show,
@@ -1589,13 +1710,15 @@ function ConsentPage({
   }, [request]);
   async function decide(approved: boolean) {
     try {
-      const result = await api<{ redirect_url: string }>("/api/oauth/consent", {
+      const result = await api<{
+        redirect_url: string;
+      }>("/api/oauth/consent", {
         method: "POST",
         body: JSON.stringify({ request, approved }),
       });
       window.location.assign(result.redirect_url);
     } catch (error) {
-      show(error instanceof Error ? error.message : "操作失败", "error");
+      show(error instanceof Error ? error.message : tr("操作失败"), "error");
     }
   }
   return (
@@ -1612,22 +1735,22 @@ function ConsentPage({
                 )}
               </div>
               <div>
-                <div className="eyebrow">授权请求</div>
+                <div className="eyebrow">{tr("授权请求")}</div>
                 <h1>{data.app.name}</h1>
                 <p>
                   {data.app.description ||
-                    "此应用请求访问你的 xem SSO 账号。"}
+                    tr("此应用请求访问你的 xem SSO 账号。")}
                 </p>
               </div>
             </div>
             <div className="consent-line">
-              <span>应用主页</span>
+              <span>{tr("应用主页")}</span>
               <a href={data.app.homepage} target="_blank" rel="noreferrer">
                 {data.app.homepage || "—"}
               </a>
             </div>
             <div className="scope-list">
-              <h2>此应用将获得</h2>
+              <h2>{tr("此应用将获得")}</h2>
               {data.scopes.map((scope) => (
                 <div className="scope-item" key={scope}>
                   <Check size={16} />
@@ -1635,10 +1758,10 @@ function ConsentPage({
                     <strong>{scope}</strong>
                     <span>
                       {scope === "openid"
-                        ? "使用你的身份标识登录"
+                        ? tr("使用你的身份标识登录")
                         : scope === "email"
-                          ? "读取邮箱和验证状态"
-                          : "读取基础个人资料"}
+                          ? tr("读取邮箱和验证状态")
+                          : tr("读取基础个人资料")}
                     </span>
                   </div>
                 </div>
@@ -1663,12 +1786,11 @@ function ConsentPage({
       </div>
       <button className="text-button" onClick={() => navigate("/dashboard")}>
         <ArrowLeft size={14} />
-        返回仪表盘
+        {tr("返回仪表盘")}
       </button>
     </div>
   );
 }
-
 function ProfilePage({
   user,
   setUser,
@@ -1721,7 +1843,12 @@ function ProfilePage({
     }>
   >([]);
   const [audit, setAudit] = useState<
-    Array<{ id: number; action: string; ip: string; created_at: string }>
+    Array<{
+      id: number;
+      action: string;
+      ip: string;
+      created_at: string;
+    }>
   >([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [password, setPassword] = useState({
@@ -1737,7 +1864,6 @@ function ProfilePage({
   const [patName, setPatName] = useState("");
   const [plainPAT, setPlainPAT] = useState("");
   const [newEmail, setNewEmail] = useState("");
-  const [emailPassword, setEmailPassword] = useState("");
   const [emailFlow, setEmailFlow] = useState<{
     token: string;
     debugCode?: string;
@@ -1776,16 +1902,14 @@ function ProfilePage({
         method: "PATCH",
         body: JSON.stringify({
           display_name: profile.display_name,
-          avatar_url: profile.avatar_url,
-          locale: profile.locale,
           security_email_enabled: profile.security_email_enabled,
         }),
       });
       setProfile({ ...profile, ...data });
       setUser({ ...profile, ...data });
-      show("资料已保存", "success");
+      show(tr("资料已保存"), "success");
     } catch (error) {
-      show(error instanceof Error ? error.message : "保存失败", "error");
+      show(error instanceof Error ? error.message : tr("保存失败"), "error");
     }
   }
   async function prepareEmailBinding(event: FormEvent) {
@@ -1798,16 +1922,15 @@ function ProfilePage({
         method: "POST",
         body: JSON.stringify({
           email: newEmail,
-          password: emailPassword,
         }),
       });
       setEmailFlow({
         token: verification.flow_token,
         debugCode: verification.debug_code,
       });
-      show("验证码已发送", "success");
+      show(tr("验证码已发送"), "success");
     } catch (error) {
-      show(error instanceof Error ? error.message : "发送失败", "error");
+      show(error instanceof Error ? error.message : tr("发送失败"), "error");
     }
   }
   async function completeEmailChange() {
@@ -1822,19 +1945,21 @@ function ProfilePage({
       });
       setEmailFlow(null);
       setEmailCode("");
-      setEmailPassword("");
       setNewEmail("");
       setModal(null);
-      show("邮箱已绑定", "success");
+      show(tr("邮箱已绑定"), "success");
       load();
     } catch (error) {
-      show(error instanceof Error ? error.message : "邮箱验证失败", "error");
+      show(
+        error instanceof Error ? error.message : tr("邮箱验证失败"),
+        "error",
+      );
     }
   }
   async function changePassword(event: FormEvent) {
     event.preventDefault();
     if (password.new_password !== password.confirm_password) {
-      show("两次输入的新密码不一致", "error");
+      show(tr("两次输入的新密码不一致"), "error");
       return;
     }
     try {
@@ -1850,11 +1975,11 @@ function ProfilePage({
       const updatedProfile = { ...profile, password_configured: true };
       setProfile(updatedProfile);
       setUser(updatedProfile);
-      show("密码已修改，其他设备已退出", "success");
+      show(tr("密码已修改，其他设备已退出"), "success");
       setModal(null);
       load();
     } catch (error) {
-      show(error instanceof Error ? error.message : "修改失败", "error");
+      show(error instanceof Error ? error.message : tr("修改失败"), "error");
     }
   }
   async function setupMFA() {
@@ -1867,7 +1992,10 @@ function ProfilePage({
       setBackupCodes([]);
       setModal("mfa");
     } catch (error) {
-      show(error instanceof Error ? error.message : "MFA 设置失败", "error");
+      show(
+        error instanceof Error ? error.message : tr("MFA 设置失败"),
+        "error",
+      );
     }
   }
   async function enableMFA(event: FormEvent) {
@@ -1876,17 +2004,22 @@ function ProfilePage({
       "code",
     );
     try {
-      const data = await api<{ backup_codes: string[] }>(
-        "/api/profile/mfa/enable",
-        { method: "POST", body: JSON.stringify({ code }) },
-      );
+      const data = await api<{
+        backup_codes: string[];
+      }>("/api/profile/mfa/enable", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      });
       setBackupCodes(data.backup_codes);
       setMfaSecret(null);
       setProfile({ ...profile, mfa_enabled: true });
       setUser({ ...profile, mfa_enabled: true });
-      show("MFA 已启用", "success");
+      show(tr("MFA 已启用"), "success");
     } catch (error) {
-      show(error instanceof Error ? error.message : "MFA 验证失败", "error");
+      show(
+        error instanceof Error ? error.message : tr("MFA 验证失败"),
+        "error",
+      );
     }
   }
   async function disableMFA(event: FormEvent) {
@@ -1899,25 +2032,27 @@ function ProfilePage({
       setMfaDisable({ password: "", code: "" });
       setProfile({ ...profile, mfa_enabled: false });
       setUser({ ...profile, mfa_enabled: false });
-      show("MFA 已停用", "success");
+      show(tr("MFA 已停用"), "success");
       setModal(null);
     } catch (error) {
-      show(error instanceof Error ? error.message : "停用失败", "error");
+      show(error instanceof Error ? error.message : tr("停用失败"), "error");
     }
   }
   async function createPAT(event: FormEvent) {
     event.preventDefault();
     try {
-      const data = await api<{ plain_token: string }>("/api/profile/tokens", {
+      const data = await api<{
+        plain_token: string;
+      }>("/api/profile/tokens", {
         method: "POST",
         body: JSON.stringify({ name: patName }),
       });
       setPlainPAT(data.plain_token);
       setPatName("");
       load();
-      show("令牌已创建", "success");
+      show(tr("令牌已创建"), "success");
     } catch (error) {
-      show(error instanceof Error ? error.message : "创建失败", "error");
+      show(error instanceof Error ? error.message : tr("创建失败"), "error");
     }
   }
   async function revokeSession(id: number) {
@@ -1925,16 +2060,16 @@ function ProfilePage({
       await api(`/api/profile/sessions/${id}`, { method: "DELETE" });
       load();
     } catch (error) {
-      show(error instanceof Error ? error.message : "操作失败", "error");
+      show(error instanceof Error ? error.message : tr("操作失败"), "error");
     }
   }
   async function logoutAll() {
     try {
       await api("/api/auth/logout-all", { method: "POST" });
-      show("已退出其它设备", "success");
+      show(tr("已退出其它设备"), "success");
       load();
     } catch (error) {
-      show(error instanceof Error ? error.message : "操作失败", "error");
+      show(error instanceof Error ? error.message : tr("操作失败"), "error");
     }
   }
   async function uploadAvatar(event: React.ChangeEvent<HTMLInputElement>) {
@@ -1943,38 +2078,43 @@ function ProfilePage({
     const form = new FormData();
     form.append("avatar", file);
     try {
-      const data = await apiForm<{ avatar_url: string }>(
-        "/api/profile/avatar",
-        form,
-      );
+      const data = await apiForm<{
+        avatar_url: string;
+      }>("/api/profile/avatar", form);
       const next = { ...profile, avatar_url: data.avatar_url };
       setProfile(next);
       setUser(next);
-      show("头像已更新", "success");
+      show(tr("头像已更新"), "success");
     } catch (error) {
-      show(error instanceof Error ? error.message : "上传失败", "error");
+      show(error instanceof Error ? error.message : tr("上传失败"), "error");
     } finally {
       event.target.value = "";
     }
   }
   async function unlinkBinding(binding: UserBinding) {
-    if (!window.confirm(`确认解绑 ${binding.display_name} ${binding.identifier}？`))
+    if (
+      !window.confirm(
+        trf("确认解绑 {{provider}} {{identifier}}？", {
+          provider: binding.display_name,
+          identifier: binding.identifier,
+        }),
+      )
+    )
       return;
     try {
       await api(
         `/api/profile/bindings/${binding.binding_type}/${binding.binding_id}`,
         { method: "DELETE" },
       );
-      show("账号已解绑", "success");
+      show(tr("账号已解绑"), "success");
       load();
     } catch (error) {
-      show(error instanceof Error ? error.message : "解绑失败", "error");
+      show(error instanceof Error ? error.message : tr("解绑失败"), "error");
     }
   }
   async function deleteAccount(event: FormEvent) {
     event.preventDefault();
-    if (!window.confirm("确认注销账户？注销后将无法继续登录。"))
-      return;
+    if (!window.confirm(tr("确认注销账户？注销后将无法继续登录。"))) return;
     try {
       await api("/api/profile", {
         method: "DELETE",
@@ -1982,43 +2122,48 @@ function ProfilePage({
       });
       window.location.assign("/login");
     } catch (error) {
-      show(error instanceof Error ? error.message : "注销失败", "error");
+      show(error instanceof Error ? error.message : tr("注销失败"), "error");
     }
   }
   async function startMerge(event: FormEvent) {
     event.preventDefault();
-    if (!window.confirm("账号合并完成后不可撤销，是否继续？"))
-      return;
+    if (!window.confirm(tr("账号合并完成后不可撤销，是否继续？"))) return;
     try {
-      const data = await api<{ login_url: string }>(
-        "/api/profile/merge/start",
-        {
-          method: "POST",
-          body: JSON.stringify({ password: mergePassword }),
-        },
-      );
+      const data = await api<{
+        login_url: string;
+      }>("/api/profile/merge/start", {
+        method: "POST",
+        body: JSON.stringify({ password: mergePassword }),
+      });
       window.location.assign(data.login_url);
     } catch (error) {
-      show(error instanceof Error ? error.message : "发起合并失败", "error");
+      show(
+        error instanceof Error ? error.message : tr("发起合并失败"),
+        "error",
+      );
     }
   }
   const profileNavigation = [
-    { id: "account", label: "个人资料", icon: UserCircle2 },
-    { id: "security", label: "账号安全", icon: ShieldCheck },
-    { id: "sessions", label: "登录设备", icon: Smartphone },
-    { id: "tokens", label: "访问令牌", icon: KeyRound },
-    { id: "bindings", label: "账号绑定", icon: Link2 },
-    { id: "activity", label: "安全活动", icon: Activity },
-    { id: "danger", label: "危险操作", icon: Trash2 },
+    { id: "account", label: tr("个人资料"), icon: UserCircle2 },
+    {
+      id: "security",
+      label: tr("账号安全"),
+      icon: ShieldCheck,
+    },
+    { id: "sessions", label: tr("登录设备"), icon: Smartphone },
+    { id: "tokens", label: tr("访问令牌"), icon: KeyRound },
+    { id: "bindings", label: tr("账号绑定"), icon: Link2 },
+    { id: "activity", label: tr("安全活动"), icon: Activity },
+    { id: "danger", label: tr("危险操作"), icon: Trash2 },
   ] as const;
   return (
     <>
       <PageHeader
         title={t("profile")}
-        description="管理个人资料、登录方式与账号安全"
+        description={tr("管理个人资料、登录方式与账号安全")}
       />
       <div className="profile-settings-layout">
-        <aside className="profile-settings-nav" aria-label="个人设置">
+        <aside className="profile-settings-nav" aria-label={tr("个人设置")}>
           <div className="profile-nav-account">
             <Avatar user={profile} small />
             <div>
@@ -2046,8 +2191,8 @@ function ProfilePage({
             <>
               <div className="section-heading">
                 <div>
-                  <h2>个人资料</h2>
-                  <p>更新公开展示信息和界面偏好。</p>
+                  <h2>{tr("个人资料")}</h2>
+                  <p>{tr("更新公开展示信息和界面偏好。")}</p>
                 </div>
               </div>
               <form onSubmit={saveProfile} className="settings-form-body">
@@ -2055,10 +2200,10 @@ function ProfilePage({
                   <Avatar user={profile} />
                   <div>
                     <strong>{profile.username}</strong>
-                    <span>JPG、PNG 或 WebP，最大 2MB</span>
+                    <span>{tr("JPG、PNG 或 WebP，最大 2MB")}</span>
                     <label className="upload-button">
                       <Clipboard size={14} />
-                      上传头像
+                      {tr("上传头像")}
                       <input
                         type="file"
                         accept="image/jpeg,image/png,image/webp"
@@ -2068,13 +2213,13 @@ function ProfilePage({
                   </div>
                 </div>
                 <Input
-                  label="用户名"
+                  label={tr("用户名")}
                   value={profile.username}
                   disabled
-                  hint="用户名由管理员维护"
+                  hint={tr("用户名由管理员维护")}
                 />
                 <Input
-                  label="显示名称"
+                  label={tr("显示名称")}
                   value={profile.display_name}
                   onChange={(event) =>
                     setProfile({
@@ -2083,17 +2228,12 @@ function ProfilePage({
                     })
                   }
                 />
-                <Input
-                  label="头像 URL"
-                  value={profile.avatar_url}
-                  onChange={(event) =>
-                    setProfile({ ...profile, avatar_url: event.target.value })
-                  }
-                />
                 <label className="setting-toggle">
                   <div>
-                    <strong>接收安全邮件</strong>
-                    <span>密码、MFA、邮箱和异常登录发生变更时发送提醒。</span>
+                    <strong>{tr("接收安全邮件")}</strong>
+                    <span>
+                      {tr("密码、MFA、邮箱和异常登录发生变更时发送提醒。")}
+                    </span>
                   </div>
                   <input
                     type="checkbox"
@@ -2118,18 +2258,18 @@ function ProfilePage({
             <>
               <div className="section-heading">
                 <div>
-                  <h2>账号安全</h2>
-                  <p>密码和二次验证分别在独立流程中完成。</p>
+                  <h2>{tr("账号安全")}</h2>
+                  <p>{tr("密码和二次验证分别在独立流程中完成。")}</p>
                 </div>
               </div>
               <div className="settings-list">
                 <div className="setting-action-row">
                   <div>
-                    <strong>登录密码</strong>
+                    <strong>{tr("登录密码")}</strong>
                     <span>
                       {profile.password_configured
-                        ? "已设置，可随时更新"
-                        : "尚未设置密码"}
+                        ? tr("已设置，可随时更新")
+                        : tr("尚未设置密码")}
                     </span>
                   </div>
                   <Button
@@ -2137,16 +2277,18 @@ function ProfilePage({
                     onClick={() => setModal("password")}
                     icon={<KeyRound size={15} />}
                   >
-                    {profile.password_configured ? "修改密码" : "设置密码"}
+                    {profile.password_configured
+                      ? tr("修改密码")
+                      : tr("设置密码")}
                   </Button>
                 </div>
                 <div className="setting-action-row">
                   <div>
-                    <strong>二次验证（MFA）</strong>
+                    <strong>{tr("二次验证（MFA）")}</strong>
                     <span>
                       {profile.mfa_enabled
-                        ? "已启用 Authenticator 验证"
-                        : "未启用，建议配置"}
+                        ? tr("已启用 Authenticator 验证")
+                        : tr("未启用，建议配置")}
                     </span>
                   </div>
                   {profile.mfa_enabled ? (
@@ -2154,11 +2296,11 @@ function ProfilePage({
                       variant="danger"
                       onClick={() => setModal("mfa-disable")}
                     >
-                      停用
+                      {tr("停用")}
                     </Button>
                   ) : (
                     <Button onClick={setupMFA} icon={<Shield size={15} />}>
-                      启用
+                      {tr("启用")}
                     </Button>
                   )}
                 </div>
@@ -2169,23 +2311,31 @@ function ProfilePage({
             <>
               <div className="section-heading">
                 <div>
-                  <h2>登录设备</h2>
-                  <p>查看当前有效会话并撤销不再使用的设备。</p>
+                  <h2>{tr("登录设备")}</h2>
+                  <p>{tr("查看当前有效会话并撤销不再使用的设备。")}</p>
                 </div>
                 <Button
                   variant="secondary"
                   onClick={logoutAll}
                   icon={<LogOut size={15} />}
                 >
-                  退出其它设备
+                  {tr("退出其它设备")}
                 </Button>
               </div>
               <Table
-                headers={["设备", "IP", "浏览器 / 系统", "最近活跃", "操作"]}
+                headers={[
+                  tr("设备"),
+                  "IP",
+                  tr("浏览器 / 系统"),
+                  tr("最近活跃"),
+                  tr("操作"),
+                ]}
                 rows={sessions.map((session) => [
                   <div key="device">
                     <strong>{session.device_name}</strong>
-                    {session.current && <Badge tone="success">当前</Badge>}
+                    {session.current && (
+                      <Badge tone="success">{tr("当前")}</Badge>
+                    )}
                   </div>,
                   session.ip,
                   <span className="ua">{session.user_agent}</span>,
@@ -2199,11 +2349,11 @@ function ProfilePage({
                       onClick={() => revokeSession(session.id)}
                       icon={<X size={14} />}
                     >
-                      撤销
+                      {tr("撤销")}
                     </Button>
                   ),
                 ])}
-                empty="暂无有效会话"
+                empty={tr("暂无有效会话")}
               />
             </>
           )}
@@ -2211,8 +2361,8 @@ function ProfilePage({
             <>
               <div className="section-heading">
                 <div>
-                  <h2>个人访问令牌</h2>
-                  <p>用于服务端脚本、CI 和自动化的长期 API 凭证。</p>
+                  <h2>{tr("个人访问令牌")}</h2>
+                  <p>{tr("用于服务端脚本、CI 和自动化的长期 API 凭证。")}</p>
                 </div>
                 <Button
                   onClick={() => {
@@ -2221,7 +2371,7 @@ function ProfilePage({
                   }}
                   icon={<Plus size={15} />}
                 >
-                  创建 token
+                  {tr("创建 token")}
                 </Button>
               </div>
               <div className="settings-list">
@@ -2244,12 +2394,12 @@ function ProfilePage({
                         }
                         icon={<Trash2 size={14} />}
                       >
-                        撤销
+                        {tr("撤销")}
                       </Button>
                     </div>
                   ))
                 ) : (
-                  <Empty text="还没有创建任何 token" />
+                  <Empty text={tr("还没有创建任何 token")} />
                 )}
               </div>
             </>
@@ -2258,14 +2408,14 @@ function ProfilePage({
             <>
               <div className="section-heading">
                 <div>
-                  <h2>账号绑定</h2>
+                  <h2>{tr("账号绑定")}</h2>
                 </div>
                 <Button
                   variant="secondary"
                   onClick={() => setModal("email")}
                   icon={<Mail size={15} />}
                 >
-                  绑定邮箱
+                  {tr("绑定邮箱")}
                 </Button>
               </div>
               <div className="binding-list unified">
@@ -2280,29 +2430,31 @@ function ProfilePage({
                         {binding.display_name} <code>{binding.identifier}</code>
                       </strong>
                       <span>
-                        {binding.account_name || binding.email || "已验证"}
+                        {binding.account_name || binding.email || tr("已验证")}
                       </span>
                     </div>
                     <div className="binding-badges">
                       <Badge tone={binding.verified ? "success" : "warning"}>
-                        {binding.verified ? "已验证" : "未验证"}
+                        {binding.verified ? tr("已验证") : tr("未验证")}
                       </Badge>
                       <button
                         type="button"
                         className="icon-button danger-icon"
                         onClick={() => unlinkBinding(binding)}
-                        title="解绑"
+                        title={tr("解绑")}
                       >
                         <Trash2 size={14} />
                       </button>
                     </div>
                   </div>
                 ))}
-                {!profile.bindings?.length && <Empty text="暂无账号绑定" />}
+                {!profile.bindings?.length && (
+                  <Empty text={tr("暂无账号绑定")} />
+                )}
               </div>
               <div className="section-heading binding-connect-heading">
                 <div>
-                  <h2>添加第三方账号</h2>
+                  <h2>{tr("添加第三方账号")}</h2>
                 </div>
               </div>
               <div className="settings-list">
@@ -2314,8 +2466,8 @@ function ProfilePage({
                         <strong>{provider.display_name}</strong>
                         <span>
                           {provider.bound
-                            ? "已有绑定，可继续绑定另一个账号"
-                            : "尚未绑定"}
+                            ? tr("已有绑定，可继续绑定另一个账号")
+                            : tr("尚未绑定")}
                         </span>
                       </div>
                     </div>
@@ -2323,7 +2475,7 @@ function ProfilePage({
                       className="button secondary"
                       href={`/oauth/upstream/${provider.kind}/start?return_to=/profile`}
                     >
-                      {provider.bound ? "继续绑定" : "连接"}
+                      {provider.bound ? tr("继续绑定") : tr("连接")}
                     </a>
                   </div>
                 ))}
@@ -2334,18 +2486,18 @@ function ProfilePage({
             <>
               <div className="section-heading">
                 <div>
-                  <h2>安全活动</h2>
-                  <p>最近 100 条账号安全事件。</p>
+                  <h2>{tr("安全活动")}</h2>
+                  <p>{tr("最近 100 条账号安全事件。")}</p>
                 </div>
               </div>
               <Table
-                headers={["时间", "动作", "IP"]}
+                headers={[tr("时间"), tr("动作"), "IP"]}
                 rows={audit.map((event) => [
                   formatDate(event.created_at),
                   event.action,
                   event.ip || "—",
                 ])}
-                empty="暂无安全活动"
+                empty={tr("暂无安全活动")}
               />
             </>
           )}
@@ -2353,45 +2505,45 @@ function ProfilePage({
             <>
               <div className="section-heading">
                 <div>
-                  <h2>危险操作</h2>
-                  <p>这些操作会改变账号归属或登录状态。</p>
+                  <h2>{tr("危险操作")}</h2>
+                  <p>{tr("这些操作会改变账号归属或登录状态。")}</p>
                 </div>
               </div>
               <div className="settings-list danger-settings">
                 <div className="setting-action-row">
                   <div>
-                    <strong>导出我的数据</strong>
-                    <span>下载平台保存的全部账号数据（JSON）。</span>
+                    <strong>{tr("导出我的数据")}</strong>
+                    <span>{tr("下载平台保存的全部账号数据（JSON）。")}</span>
                   </div>
                   <a className="button secondary" href="/api/profile/export">
                     <Clipboard size={15} />
-                    导出
+                    {tr("导出")}
                   </a>
                 </div>
                 <div className="setting-action-row">
                   <div>
-                    <strong>合并账号</strong>
-                    <span>将另一个账号与当前账号合并。</span>
+                    <strong>{tr("合并账号")}</strong>
+                    <span>{tr("将另一个账号与当前账号合并。")}</span>
                   </div>
                   <Button
                     variant="secondary"
                     onClick={() => setModal("merge")}
                     icon={<Link2 size={15} />}
                   >
-                    合并账号
+                    {tr("合并账号")}
                   </Button>
                 </div>
                 <div className="setting-action-row">
                   <div>
-                    <strong>注销账户</strong>
-                    <span>注销后将无法继续登录。</span>
+                    <strong>{tr("注销账户")}</strong>
+                    <span>{tr("注销后将无法继续登录。")}</span>
                   </div>
                   <Button
                     variant="danger"
                     onClick={() => setModal("delete")}
                     icon={<Trash2 size={15} />}
                   >
-                    注销账户
+                    {tr("注销账户")}
                   </Button>
                 </div>
               </div>
@@ -2402,14 +2554,14 @@ function ProfilePage({
 
       <Modal
         open={modal === "password"}
-        title={profile.password_configured ? "修改密码" : "设置密码"}
-        description="修改后其它设备上的会话将被撤销。"
+        title={profile.password_configured ? tr("修改密码") : tr("设置密码")}
+        description={tr("修改后其它设备上的会话将被撤销。")}
         onClose={() => setModal(null)}
       >
         <form onSubmit={changePassword} className="form-stack">
           {profile.password_configured && (
             <Input
-              label="当前密码"
+              label={tr("当前密码")}
               type="password"
               value={password.current_password}
               onChange={(event) =>
@@ -2423,18 +2575,18 @@ function ProfilePage({
             />
           )}
           <Input
-            label="新密码"
+            label={tr("新密码")}
             type="password"
             value={password.new_password}
             onChange={(event) =>
               setPassword({ ...password, new_password: event.target.value })
             }
-            hint="至少 8 位，且同时包含字母和数字"
+            hint={tr("至少 8 位，且同时包含字母和数字")}
             autoComplete="new-password"
             required
           />
           <Input
-            label="确认新密码"
+            label={tr("确认新密码")}
             type="password"
             value={password.confirm_password}
             onChange={(event) =>
@@ -2448,20 +2600,19 @@ function ProfilePage({
           />
           <div className="modal-form-actions">
             <Button variant="secondary" onClick={() => setModal(null)}>
-              取消
+              {tr("取消")}
             </Button>
-            <Button type="submit">确认修改</Button>
+            <Button type="submit">{tr("确认修改")}</Button>
           </div>
         </form>
       </Modal>
       <Modal
         open={modal === "email"}
-        title="绑定邮箱"
-        description="验证码将发送到新邮箱。"
+        title={tr("绑定邮箱")}
+        description={tr("验证码将发送到新邮箱。")}
         onClose={() => {
           setModal(null);
           setNewEmail("");
-          setEmailPassword("");
           setEmailCode("");
           setEmailFlow(null);
         }}
@@ -2469,33 +2620,24 @@ function ProfilePage({
         {!emailFlow ? (
           <form onSubmit={prepareEmailBinding} className="form-stack">
             <Input
-              label="邮箱"
+              label={tr("邮箱")}
               type="email"
               value={newEmail}
               onChange={(event) => setNewEmail(event.target.value)}
               autoComplete="email"
               required
             />
-            {profile.password_configured && (
-              <Input
-                label="当前密码"
-                type="password"
-                value={emailPassword}
-                onChange={(event) => setEmailPassword(event.target.value)}
-                required
-              />
-            )}
             <div className="modal-form-actions">
               <Button variant="secondary" onClick={() => setModal(null)}>
-                取消
+                {tr("取消")}
               </Button>
-              <Button type="submit">发送验证码</Button>
+              <Button type="submit">{tr("发送验证码")}</Button>
             </div>
           </form>
         ) : (
           <div className="form-stack">
             <Input
-              label="邮箱验证码"
+              label={tr("邮箱验证码")}
               value={emailCode}
               onChange={(event) => setEmailCode(event.target.value)}
               inputMode="numeric"
@@ -2504,25 +2646,26 @@ function ProfilePage({
             />
             {emailFlow.debugCode && (
               <div className="debug-code">
-                本地调试验证码：<code>{emailFlow.debugCode}</code>
+                {tr("本地调试验证码：")}
+                <code>{emailFlow.debugCode}</code>
               </div>
             )}
             <div className="modal-form-actions">
               <Button variant="secondary" onClick={() => setEmailFlow(null)}>
-                返回
+                {tr("返回")}
               </Button>
-              <Button onClick={completeEmailChange}>验证并绑定</Button>
+              <Button onClick={completeEmailChange}>{tr("验证并绑定")}</Button>
             </div>
           </div>
         )}
       </Modal>
       <Modal
         open={modal === "mfa"}
-        title="启用二次验证"
+        title={tr("启用二次验证")}
         description={
           backupCodes.length
-            ? "请立即保存备用码。"
-            : "使用 Authenticator App 扫描二维码并验证。"
+            ? tr("请立即保存备用码。")
+            : tr("使用 Authenticator App 扫描二维码并验证。")
         }
         onClose={() => {
           setModal(null);
@@ -2536,20 +2679,20 @@ function ProfilePage({
               <QRCodeSVG value={mfaSecret.otpauth_url} size={208} />
             </div>
             <div className="manual-secret">
-              <span>无法扫码？手动输入密钥</span>
+              <span>{tr("无法扫码？手动输入密钥")}</span>
               <code>{mfaSecret.secret}</code>
               <button
                 type="button"
                 className="icon-button"
                 onClick={() => navigator.clipboard.writeText(mfaSecret.secret)}
-                title="复制密钥"
+                title={tr("复制密钥")}
               >
                 <Copy size={15} />
               </button>
             </div>
             <Input
               name="code"
-              label="Authenticator 验证码"
+              label={tr("Authenticator 验证码")}
               inputMode="numeric"
               autoComplete="one-time-code"
               maxLength={6}
@@ -2557,9 +2700,9 @@ function ProfilePage({
             />
             <div className="modal-form-actions">
               <Button variant="secondary" onClick={() => setModal(null)}>
-                取消
+                {tr("取消")}
               </Button>
-              <Button type="submit">验证并启用</Button>
+              <Button type="submit">{tr("验证并启用")}</Button>
             </div>
           </form>
         )}
@@ -2571,7 +2714,7 @@ function ProfilePage({
               ))}
             </div>
             <div className="notice warning">
-              每个备用码只能使用一次，请存放在安全位置。
+              {tr("每个备用码只能使用一次，请存放在安全位置。")}
             </div>
             <div className="modal-form-actions">
               <Button
@@ -2581,7 +2724,7 @@ function ProfilePage({
                 }
                 icon={<Copy size={15} />}
               >
-                复制全部
+                {tr("复制全部")}
               </Button>
               <Button
                 onClick={() => {
@@ -2589,7 +2732,7 @@ function ProfilePage({
                   setBackupCodes([]);
                 }}
               >
-                完成
+                {tr("完成")}
               </Button>
             </div>
           </div>
@@ -2597,14 +2740,14 @@ function ProfilePage({
       </Modal>
       <Modal
         open={modal === "mfa-disable"}
-        title="停用二次验证"
-        description="确认后将删除当前 MFA 密钥和所有备用码。"
+        title={tr("停用二次验证")}
+        description={tr("确认后将删除当前 MFA 密钥和所有备用码。")}
         onClose={() => setModal(null)}
       >
         <form onSubmit={disableMFA} className="form-stack">
           {profile.password_configured && (
             <Input
-              label="当前密码"
+              label={tr("当前密码")}
               type="password"
               value={mfaDisable.password}
               onChange={(event) =>
@@ -2614,7 +2757,7 @@ function ProfilePage({
             />
           )}
           <Input
-            label="MFA 验证码或备用码"
+            label={tr("MFA 验证码或备用码")}
             value={mfaDisable.code}
             onChange={(event) =>
               setMfaDisable({ ...mfaDisable, code: event.target.value })
@@ -2623,18 +2766,18 @@ function ProfilePage({
           />
           <div className="modal-form-actions">
             <Button variant="secondary" onClick={() => setModal(null)}>
-              取消
+              {tr("取消")}
             </Button>
             <Button type="submit" variant="danger">
-              确认停用
+              {tr("确认停用")}
             </Button>
           </div>
         </form>
       </Modal>
       <Modal
         open={modal === "token"}
-        title="创建个人访问令牌"
-        description="令牌只会完整显示一次。"
+        title={tr("创建个人访问令牌")}
+        description={tr("令牌只会完整显示一次。")}
         onClose={() => {
           setModal(null);
           setPlainPAT("");
@@ -2642,10 +2785,10 @@ function ProfilePage({
       >
         <form onSubmit={createPAT} className="form-stack">
           <Input
-            label="令牌名称"
+            label={tr("令牌名称")}
             value={patName}
             onChange={(event) => setPatName(event.target.value)}
-            placeholder="例如：CI deployment"
+            placeholder={tr("例如：CI deployment")}
             required
           />
           {plainPAT && (
@@ -2662,22 +2805,22 @@ function ProfilePage({
           )}
           <div className="modal-form-actions">
             <Button variant="secondary" onClick={() => setModal(null)}>
-              关闭
+              {tr("关闭")}
             </Button>
-            {!plainPAT && <Button type="submit">创建 token</Button>}
+            {!plainPAT && <Button type="submit">{tr("创建 token")}</Button>}
           </div>
         </form>
       </Modal>
       <Modal
         open={modal === "merge"}
-        title="合并账号"
-        description="账号合并完成后不可撤销。"
+        title={tr("合并账号")}
+        description={tr("账号合并完成后不可撤销。")}
         onClose={() => setModal(null)}
       >
         <form onSubmit={startMerge} className="form-stack">
           {profile.password_configured && (
             <Input
-              label="当前密码"
+              label={tr("当前密码")}
               type="password"
               value={mergePassword}
               onChange={(event) => setMergePassword(event.target.value)}
@@ -2686,22 +2829,22 @@ function ProfilePage({
           )}
           <div className="modal-form-actions">
             <Button variant="secondary" onClick={() => setModal(null)}>
-              取消
+              {tr("取消")}
             </Button>
-            <Button type="submit">继续验证另一个账号</Button>
+            <Button type="submit">{tr("继续验证另一个账号")}</Button>
           </div>
         </form>
       </Modal>
       <Modal
         open={modal === "delete"}
-        title="注销账户"
-        description="注销后将无法继续登录。"
+        title={tr("注销账户")}
+        description={tr("注销后将无法继续登录。")}
         onClose={() => setModal(null)}
       >
         <form onSubmit={deleteAccount} className="form-stack">
           {profile.password_configured && (
             <Input
-              label="当前密码"
+              label={tr("当前密码")}
               type="password"
               value={deletePassword}
               onChange={(event) => setDeletePassword(event.target.value)}
@@ -2710,10 +2853,10 @@ function ProfilePage({
           )}
           <div className="modal-form-actions">
             <Button variant="secondary" onClick={() => setModal(null)}>
-              取消
+              {tr("取消")}
             </Button>
             <Button type="submit" variant="danger">
-              确认注销
+              {tr("确认注销")}
             </Button>
           </div>
         </form>
@@ -2729,7 +2872,6 @@ type AdminUser = User & {
   merged_into_user_id?: number;
   password?: string;
 };
-
 function AdminUsersPage({
   show,
 }: {
@@ -2747,18 +2889,23 @@ function AdminUsersPage({
   const [selected, setSelected] = useState<AdminUser | null>(null);
   const [checked, setChecked] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
-
   const loadUsers = async (nextPage = page) => {
     setLoading(true);
     try {
-      const data = await api<{ items: AdminUser[]; total: number }>(
+      const data = await api<{
+        items: AdminUser[];
+        total: number;
+      }>(
         `/api/admin/users?q=${encodeURIComponent(query)}&status=${status}&role=${role}&page=${nextPage}&page_size=${pageSize}&sort=${sort}&order=${order}`,
       );
       setUsers(data.items);
       setTotal(data.total);
       setChecked([]);
     } catch (error) {
-      show(error instanceof Error ? error.message : "读取用户失败", "error");
+      show(
+        error instanceof Error ? error.message : tr("读取用户失败"),
+        "error",
+      );
     } finally {
       setLoading(false);
     }
@@ -2766,7 +2913,6 @@ function AdminUsersPage({
   useEffect(() => {
     loadUsers();
   }, [page, pageSize, sort, order, status, role]);
-
   function changeSort(column: string) {
     if (sort === column) setOrder(order === "asc" ? "desc" : "asc");
     else {
@@ -2784,7 +2930,10 @@ function AdminUsersPage({
         password: "",
       });
     } catch (error) {
-      show(error instanceof Error ? error.message : "读取用户失败", "error");
+      show(
+        error instanceof Error ? error.message : tr("读取用户失败"),
+        "error",
+      );
     }
   }
   async function saveUser(event: FormEvent) {
@@ -2801,37 +2950,54 @@ function AdminUsersPage({
           status: selected.status,
         }),
       });
-      show(`用户 ${selected.username} 已更新`, "success");
+      show(
+        trf("用户 {{username}} 已更新", { username: selected.username }),
+        "success",
+      );
       await loadUsers();
       await openUser(selected.id);
     } catch (error) {
-      show(error instanceof Error ? error.message : "保存失败", "error");
+      show(error instanceof Error ? error.message : tr("保存失败"), "error");
     }
   }
   async function deleteBinding(binding: UserBinding) {
-    if (!window.confirm(`确认解绑 ${binding.display_name} ${binding.identifier}？`))
+    if (
+      !window.confirm(
+        trf("确认解绑 {{provider}} {{identifier}}？", {
+          provider: binding.display_name,
+          identifier: binding.identifier,
+        }),
+      )
+    )
       return;
     try {
       await api(
         `/api/admin/bindings/${binding.binding_type}/${binding.binding_id}`,
         { method: "DELETE" },
       );
-      show("绑定已删除", "success");
+      show(tr("绑定已删除"), "success");
       if (selected) await openUser(selected.id);
       await loadUsers();
     } catch (error) {
-      show(error instanceof Error ? error.message : "删除失败", "error");
+      show(error instanceof Error ? error.message : tr("删除失败"), "error");
     }
   }
   async function resetMFA() {
-    if (!selected || !window.confirm(`确认重置 ${selected.username} 的 MFA？`))
+    if (
+      !selected ||
+      !window.confirm(
+        trf("确认重置 {{username}} 的 MFA？", {
+          username: selected.username,
+        }),
+      )
+    )
       return;
     try {
       await api(`/api/admin/users/${selected.id}/mfa`, { method: "DELETE" });
-      show("MFA 已重置", "success");
+      show(tr("MFA 已重置"), "success");
       await openUser(selected.id);
     } catch (error) {
-      show(error instanceof Error ? error.message : "重置失败", "error");
+      show(error instanceof Error ? error.message : tr("重置失败"), "error");
     }
   }
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -2844,7 +3010,11 @@ function AdminUsersPage({
       items.includes(id) ? items.filter((item) => item !== id) : [...items, id],
     );
   const statusLabel = (value: User["status"]) =>
-    value === "active" ? "已启用" : value === "merged" ? "已合并" : "已注销";
+    value === "active"
+      ? tr("已启用")
+      : value === "merged"
+        ? tr("已合并")
+        : tr("已注销");
   const SortHeader = ({
     column,
     children,
@@ -2857,12 +3027,11 @@ function AdminUsersPage({
       <ChevronDown size={13} className={sort === column ? order : ""} />
     </button>
   );
-
   return (
     <>
       <PageHeader
-        title="用户管理"
-        description="管理账号状态、权限和全部登录身份绑定。"
+        title={tr("用户管理")}
+        description={tr("管理账号状态、权限和全部登录身份绑定。")}
       />
       <div className="data-table-shell">
         <div className="data-table-toolbar">
@@ -2877,7 +3046,7 @@ function AdminUsersPage({
                   loadUsers(1);
                 }
               }}
-              placeholder="按用户名、显示名称或邮箱筛选..."
+              placeholder={tr("按用户名、显示名称或邮箱筛选...")}
             />
           </div>
           <Select
@@ -2886,12 +3055,12 @@ function AdminUsersPage({
               setPage(1);
               setStatus(event.target.value);
             }}
-            aria-label="状态"
+            aria-label={tr("状态")}
           >
-            <option value="all">全部状态</option>
-            <option value="active">已启用</option>
-            <option value="deactivated">已注销</option>
-            <option value="merged">已合并</option>
+            <option value="all">{tr("全部状态")}</option>
+            <option value="active">{tr("已启用")}</option>
+            <option value="deactivated">{tr("已注销")}</option>
+            <option value="merged">{tr("已合并")}</option>
           </Select>
           <Select
             value={role}
@@ -2899,11 +3068,11 @@ function AdminUsersPage({
               setPage(1);
               setRole(event.target.value);
             }}
-            aria-label="角色"
+            aria-label={tr("角色")}
           >
-            <option value="all">全部角色</option>
-            <option value="user">用户</option>
-            <option value="admin">管理员</option>
+            <option value="all">{tr("全部角色")}</option>
+            <option value="user">{tr("用户")}</option>
+            <option value="admin">{tr("管理员")}</option>
           </Select>
           <Button
             variant="secondary"
@@ -2913,7 +3082,7 @@ function AdminUsersPage({
             }}
             icon={<Search size={15} />}
           >
-            查询
+            {tr("查询")}
           </Button>
         </div>
         <div className="table-wrap admin-table-wrap">
@@ -2927,29 +3096,31 @@ function AdminUsersPage({
                       users.length > 0 && checked.length === users.length
                     }
                     onChange={toggleAll}
-                    aria-label="选择本页全部用户"
+                    aria-label={tr("选择本页全部用户")}
                   />
                 </th>
                 <th>
                   <SortHeader column="id">ID</SortHeader>
                 </th>
                 <th>
-                  <SortHeader column="username">用户名</SortHeader>
+                  <SortHeader column="username">{tr("用户名")}</SortHeader>
                 </th>
                 <th>
-                  <SortHeader column="status">状态</SortHeader>
+                  <SortHeader column="status">{tr("状态")}</SortHeader>
                 </th>
-                <th>绑定</th>
+                <th>{tr("绑定")}</th>
                 <th>
-                  <SortHeader column="role">角色</SortHeader>
-                </th>
-                <th>
-                  <SortHeader column="created_at">创建时间</SortHeader>
+                  <SortHeader column="role">{tr("角色")}</SortHeader>
                 </th>
                 <th>
-                  <SortHeader column="last_login_at">最后登录</SortHeader>
+                  <SortHeader column="created_at">{tr("创建时间")}</SortHeader>
                 </th>
-                <th>操作</th>
+                <th>
+                  <SortHeader column="last_login_at">
+                    {tr("最后登录")}
+                  </SortHeader>
+                </th>
+                <th>{tr("操作")}</th>
               </tr>
             </thead>
             <tbody>
@@ -2963,7 +3134,9 @@ function AdminUsersPage({
                       type="checkbox"
                       checked={checked.includes(item.id)}
                       onChange={() => toggleOne(item.id)}
-                      aria-label={`选择 ${item.username}`}
+                      aria-label={trf("选择 {{username}}", {
+                        username: item.username,
+                      })}
                     />
                   </td>
                   <td>
@@ -2992,18 +3165,23 @@ function AdminUsersPage({
                     <div className="binding-count">
                       <strong>{item.binding_count}</strong>
                       <span>
-                        {item.email_count} 邮箱 · {item.identity_count} 第三方
+                        {item.email_count}
+                        {" " + (tr("邮箱 ·") + " ")}
+                        {item.identity_count}
+                        {tr("第三方")}
                       </span>
                     </div>
                   </td>
                   <td>
                     {item.role === "admin" ? (
                       <>
-                        <Shield size={14} /> 管理员
+                        <Shield size={14} />
+                        {tr("管理员")}
                       </>
                     ) : (
                       <>
-                        <UserCircle2 size={14} /> 用户
+                        <UserCircle2 size={14} />
+                        {tr("用户")}
                       </>
                     )}
                   </td>
@@ -3014,7 +3192,7 @@ function AdminUsersPage({
                       <button
                         className="icon-button"
                         onClick={() => openUser(item.id)}
-                        title="编辑用户"
+                        title={tr("编辑用户")}
                       >
                         <Pencil size={15} />
                       </button>
@@ -3025,13 +3203,19 @@ function AdminUsersPage({
             </tbody>
           </table>
           {!users.length && (
-            <Empty text={loading ? "正在加载用户..." : "没有匹配的用户"} />
+            <Empty
+              text={loading ? tr("正在加载用户...") : tr("没有匹配的用户")}
+            />
           )}
         </div>
         <div className="data-table-footer">
           <span>
-            共 {total} 个用户
-            {checked.length ? ` · 已选择 ${checked.length} 个` : ""}
+            {tr("共")}
+            {total}
+            {tr("个用户")}
+            {checked.length
+              ? ` · ${trf("已选择 {{count}} 个", { count: checked.length })}`
+              : ""}
           </span>
           <div>
             <Select
@@ -3040,11 +3224,11 @@ function AdminUsersPage({
                 setPage(1);
                 setPageSize(Number(event.target.value));
               }}
-              aria-label="每页数量"
+              aria-label={tr("每页数量")}
             >
-              <option value={10}>10 / 页</option>
-              <option value={20}>20 / 页</option>
-              <option value={50}>50 / 页</option>
+              <option value={10}>{tr("10 / 页")}</option>
+              <option value={20}>{tr("20 / 页")}</option>
+              <option value={50}>{tr("50 / 页")}</option>
             </Select>
             <Button
               variant="secondary"
@@ -3052,7 +3236,7 @@ function AdminUsersPage({
               onClick={() => setPage(page - 1)}
               icon={<ArrowLeft size={14} />}
             >
-              上一页
+              {tr("上一页")}
             </Button>
             <span>
               {page} / {pageCount}
@@ -3063,7 +3247,7 @@ function AdminUsersPage({
               onClick={() => setPage(page + 1)}
               icon={<ArrowRight size={14} />}
             >
-              下一页
+              {tr("下一页")}
             </Button>
           </div>
         </div>
@@ -3075,18 +3259,18 @@ function AdminUsersPage({
             className="side-drawer"
             role="dialog"
             aria-modal="true"
-            aria-label="更新用户"
+            aria-label={tr("更新用户")}
             onMouseDown={(event) => event.stopPropagation()}
           >
             <header className="side-drawer-header">
               <div>
-                <h2>更新用户</h2>
-                <p>通过必要信息更新用户。</p>
+                <h2>{tr("更新用户")}</h2>
+                <p>{tr("通过必要信息更新用户。")}</p>
               </div>
               <button
                 className="icon-button"
                 onClick={() => setSelected(null)}
-                aria-label="关闭"
+                aria-label={tr("关闭")}
               >
                 <X size={18} />
               </button>
@@ -3097,9 +3281,9 @@ function AdminUsersPage({
               className="side-drawer-form"
             >
               <section className="drawer-section">
-                <h3>基本信息</h3>
+                <h3>{tr("基本信息")}</h3>
                 <Input
-                  label="用户名"
+                  label={tr("用户名")}
                   value={selected.username}
                   autoComplete="username"
                   onChange={(event) =>
@@ -3107,7 +3291,7 @@ function AdminUsersPage({
                   }
                 />
                 <Input
-                  label="显示名称"
+                  label={tr("显示名称")}
                   value={selected.display_name || ""}
                   onChange={(event) =>
                     setSelected({
@@ -3115,25 +3299,25 @@ function AdminUsersPage({
                       display_name: event.target.value,
                     })
                   }
-                  hint="留空以使用用户名"
+                  hint={tr("留空以使用用户名")}
                 />
                 <Input
-                  label="密码"
+                  label={tr("密码")}
                   type="password"
                   value={selected.password || ""}
                   onChange={(event) =>
                     setSelected({ ...selected, password: event.target.value })
                   }
-                  placeholder="留空以保持不变"
-                  hint="设置后会撤销该用户的全部现有会话"
+                  placeholder={tr("留空以保持不变")}
+                  hint={tr("设置后会撤销该用户的全部现有会话")}
                   autoComplete="new-password"
                 />
               </section>
               <section className="drawer-section">
-                <h3>权限与状态</h3>
+                <h3>{tr("权限与状态")}</h3>
                 <div className="form-grid-2">
                   <Select
-                    label="角色"
+                    label={tr("角色")}
                     value={selected.role}
                     onChange={(event) =>
                       setSelected({
@@ -3142,11 +3326,11 @@ function AdminUsersPage({
                       })
                     }
                   >
-                    <option value="user">用户</option>
-                    <option value="admin">管理员</option>
+                    <option value="user">{tr("用户")}</option>
+                    <option value="admin">{tr("管理员")}</option>
                   </Select>
                   <Select
-                    label="状态"
+                    label={tr("状态")}
                     value={selected.status}
                     disabled={selected.status === "merged"}
                     onChange={(event) =>
@@ -3156,25 +3340,27 @@ function AdminUsersPage({
                       })
                     }
                   >
-                    <option value="active">已启用</option>
-                    <option value="deactivated">已注销</option>
-                    <option value="merged">已合并</option>
+                    <option value="active">{tr("已启用")}</option>
+                    <option value="deactivated">{tr("已注销")}</option>
+                    <option value="merged">{tr("已合并")}</option>
                   </Select>
                 </div>
                 <div className="setting-action-row compact">
                   <div>
-                    <strong>二次验证</strong>
-                    <span>{selected.mfa_enabled ? "已启用" : "未启用"}</span>
+                    <strong>{tr("二次验证")}</strong>
+                    <span>
+                      {selected.mfa_enabled ? tr("已启用") : tr("未启用")}
+                    </span>
                   </div>
                   {selected.mfa_enabled && (
                     <Button variant="danger" onClick={resetMFA}>
-                      重置 MFA
+                      {tr("重置 MFA")}
                     </Button>
                   )}
                 </div>
               </section>
               <section className="drawer-section">
-                <h3>账号绑定</h3>
+                <h3>{tr("账号绑定")}</h3>
                 <div className="binding-list unified">
                   {selected.bindings?.map((binding) => (
                     <div
@@ -3195,13 +3381,13 @@ function AdminUsersPage({
                       </div>
                       <div className="binding-badges">
                         <Badge tone={binding.verified ? "success" : "warning"}>
-                          {binding.verified ? "已验证" : "未验证"}
+                          {binding.verified ? tr("已验证") : tr("未验证")}
                         </Badge>
                         <button
                           type="button"
                           className="icon-button danger-icon"
                           onClick={() => deleteBinding(binding)}
-                          title="解绑"
+                          title={tr("解绑")}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -3209,17 +3395,17 @@ function AdminUsersPage({
                     </div>
                   ))}
                   {!selected.bindings?.length && (
-                    <Empty text="该用户没有绑定记录" />
+                    <Empty text={tr("该用户没有绑定记录")} />
                   )}
                 </div>
               </section>
             </form>
             <footer className="side-drawer-footer">
               <Button variant="secondary" onClick={() => setSelected(null)}>
-                关闭
+                {tr("关闭")}
               </Button>
               <Button type="submit" form="admin-user-form">
-                保存更改
+                {tr("保存更改")}
               </Button>
             </footer>
           </aside>
@@ -3228,7 +3414,6 @@ function AdminUsersPage({
     </>
   );
 }
-
 type AdminSettings = {
   registration_enabled: boolean;
   smtp_host: string;
@@ -3260,7 +3445,6 @@ type AdminProvider = {
   secret_configured: boolean;
   callback_url: string;
 };
-
 function AdminSettingsPage({
   show,
 }: {
@@ -3314,10 +3498,10 @@ function AdminSettingsPage({
         turnstile_secret_key: "",
         cap_secret_key: "",
       });
-      show("系统设置已保存", "success");
+      show(tr("系统设置已保存"), "success");
       load();
     } catch (error) {
-      show(error instanceof Error ? error.message : "保存失败", "error");
+      show(error instanceof Error ? error.message : tr("保存失败"), "error");
     }
   }
   async function sendTestEmail() {
@@ -3326,9 +3510,9 @@ function AdminSettingsPage({
         method: "POST",
         body: JSON.stringify({ email: testEmail }),
       });
-      show("测试邮件已发送", "success");
+      show(tr("测试邮件已发送"), "success");
     } catch (error) {
-      show(error instanceof Error ? error.message : "发送失败", "error");
+      show(error instanceof Error ? error.message : tr("发送失败"), "error");
     }
   }
   function updateProvider(field: keyof AdminProvider, value: string | boolean) {
@@ -3347,10 +3531,13 @@ function AdminSettingsPage({
         method: "PATCH",
         body: JSON.stringify(provider),
       });
-      show(`${provider.display_name} 已保存`, "success");
+      show(
+        trf("{{provider}} 已保存", { provider: provider.display_name }),
+        "success",
+      );
       load();
     } catch (error) {
-      show(error instanceof Error ? error.message : "保存失败", "error");
+      show(error instanceof Error ? error.message : tr("保存失败"), "error");
     }
   }
   async function testProvider() {
@@ -3361,43 +3548,54 @@ function AdminSettingsPage({
         method: "POST",
         body: "{}",
       });
-      show(`${provider.display_name} 配置可用`, "success");
+      show(
+        trf("{{provider}} 配置可用", { provider: provider.display_name }),
+        "success",
+      );
     } catch (error) {
-      show(error instanceof Error ? error.message : "测试失败", "error");
+      show(error instanceof Error ? error.message : tr("测试失败"), "error");
     }
   }
   if (!settings)
     return (
       <div className="loading-screen">
-        <span>加载设置...</span>
+        <span>{tr("加载设置...")}</span>
       </div>
     );
   const provider = providers[providerIndex];
   const navGroups = [
     {
-      label: "身份验证",
+      label: tr("身份验证"),
       items: [
-        { id: "basic", label: "基本身份验证", icon: KeyRound },
-        { id: "bot", label: "机器人保护", icon: ShieldCheck },
+        {
+          id: "basic",
+          label: tr("基本身份验证"),
+          icon: KeyRound,
+        },
+        {
+          id: "bot",
+          label: tr("机器人保护"),
+          icon: ShieldCheck,
+        },
       ],
     },
     {
-      label: "第三方服务",
+      label: tr("第三方服务"),
       items: [
-        { id: "email", label: "邮件服务", icon: Send },
-        { id: "oauth", label: "OAuth 集成", icon: Link2 },
+        { id: "email", label: tr("邮件服务"), icon: Send },
+        { id: "oauth", label: tr("OAuth 集成"), icon: Link2 },
       ],
     },
   ] as const;
   return (
     <>
       <PageHeader
-        title="系统设置"
-        description="配置身份验证与第三方服务。"
+        title={tr("系统设置")}
+        description={tr("配置身份验证与第三方服务。")}
       />
       {settings.email_debug && (
         <div className="notice warning settings-debug-notice">
-          当前启用了邮件调试模式，生产环境必须设置{" "}
+          {tr("当前启用了邮件调试模式，生产环境必须设置")}{" "}
           <code>SSO_EMAIL_DEBUG=false</code>。
         </div>
       )}
@@ -3428,16 +3626,18 @@ function AdminSettingsPage({
             <form onSubmit={saveSettings}>
               <div className="section-heading">
                 <div>
-                  <h2>基本身份验证</h2>
-                  <p>控制邮箱、密码和注册流程。</p>
+                  <h2>{tr("基本身份验证")}</h2>
+                  <p>{tr("控制邮箱、密码和注册流程。")}</p>
                 </div>
               </div>
               <div className="settings-form-body">
                 <label className="setting-toggle">
                   <div>
-                    <strong>允许新用户注册</strong>
+                    <strong>{tr("允许新用户注册")}</strong>
                     <span>
-                      关闭后仍允许已有账号登录以及管理员配置的第三方身份登录。
+                      {tr(
+                        "关闭后仍允许已有账号登录以及管理员配置的第三方身份登录。",
+                      )}
                     </span>
                   </div>
                   <input
@@ -3453,23 +3653,27 @@ function AdminSettingsPage({
                 </label>
                 <div className="setting-action-row">
                   <div>
-                    <strong>注册邮箱验证</strong>
-                    <span>注册流程必须完成邮箱验证码，当前不可关闭。</span>
+                    <strong>{tr("注册邮箱验证")}</strong>
+                    <span>
+                      {tr("注册流程必须完成邮箱验证码，当前不可关闭。")}
+                    </span>
                   </div>
-                  <Badge tone="success">强制启用</Badge>
+                  <Badge tone="success">{tr("强制启用")}</Badge>
                 </div>
                 <div className="setting-action-row">
                   <div>
-                    <strong>账号识别</strong>
+                    <strong>{tr("账号识别")}</strong>
                     <span>
-                      第一页使用邮箱识别账号；新用户在下一页设置用户名和密码。
+                      {tr(
+                        "第一页使用邮箱识别账号；新用户在下一页设置用户名和密码。",
+                      )}
                     </span>
                   </div>
-                  <Badge tone="success">已启用</Badge>
+                  <Badge tone="success">{tr("已启用")}</Badge>
                 </div>
                 <div className="settings-action-bar">
                   <Button type="submit" icon={<Check size={15} />}>
-                    保存更改
+                    {tr("保存更改")}
                   </Button>
                 </div>
               </div>
@@ -3479,14 +3683,14 @@ function AdminSettingsPage({
             <form onSubmit={saveSettings}>
               <div className="section-heading">
                 <div>
-                  <h2>邮件服务</h2>
-                  <p>用于注册、绑定邮箱和安全提醒。</p>
+                  <h2>{tr("邮件服务")}</h2>
+                  <p>{tr("用于注册、绑定邮箱和安全提醒。")}</p>
                 </div>
               </div>
               <div className="settings-form-body">
                 <div className="form-grid-2">
                   <Input
-                    label="SMTP 主机"
+                    label={tr("SMTP 主机")}
                     value={settings.smtp_host}
                     onChange={(event) =>
                       setSettings({
@@ -3496,7 +3700,7 @@ function AdminSettingsPage({
                     }
                   />
                   <Input
-                    label="SMTP 端口"
+                    label={tr("SMTP 端口")}
                     value={settings.smtp_port}
                     onChange={(event) =>
                       setSettings({
@@ -3506,7 +3710,7 @@ function AdminSettingsPage({
                     }
                   />
                   <Input
-                    label="SMTP 用户名"
+                    label={tr("SMTP 用户名")}
                     value={settings.smtp_username}
                     onChange={(event) =>
                       setSettings({
@@ -3516,13 +3720,13 @@ function AdminSettingsPage({
                     }
                   />
                   <Input
-                    label="SMTP 密码"
+                    label={tr("SMTP 密码")}
                     type="password"
                     value={secrets.smtp_password}
                     placeholder={
                       settings.smtp_password_configured
-                        ? "已配置，留空不修改"
-                        : "请输入密码"
+                        ? tr("已配置，留空不修改")
+                        : tr("请输入密码")
                     }
                     onChange={(event) =>
                       setSecrets({
@@ -3533,7 +3737,7 @@ function AdminSettingsPage({
                     autoComplete="new-password"
                   />
                   <Input
-                    label="发件人"
+                    label={tr("发件人")}
                     value={settings.smtp_from}
                     onChange={(event) =>
                       setSettings({
@@ -3545,8 +3749,8 @@ function AdminSettingsPage({
                 </div>
                 <div className="setting-action-row">
                   <div>
-                    <strong>发送测试邮件</strong>
-                    <span>使用当前已保存配置发送测试邮件。</span>
+                    <strong>{tr("发送测试邮件")}</strong>
+                    <span>{tr("使用当前已保存配置发送测试邮件。")}</span>
                   </div>
                   <div className="inline-control">
                     <input
@@ -3556,13 +3760,13 @@ function AdminSettingsPage({
                       placeholder="admin@example.com"
                     />
                     <Button variant="secondary" onClick={sendTestEmail}>
-                      发送测试
+                      {tr("发送测试")}
                     </Button>
                   </div>
                 </div>
                 <div className="settings-action-bar">
                   <Button type="submit" icon={<Check size={15} />}>
-                    保存邮件设置
+                    {tr("保存邮件设置")}
                   </Button>
                 </div>
               </div>
@@ -3572,13 +3776,13 @@ function AdminSettingsPage({
             <form onSubmit={saveSettings}>
               <div className="section-heading">
                 <div>
-                  <h2>机器人保护</h2>
-                  <p>在登录注册流程第一页验证客户端。</p>
+                  <h2>{tr("机器人保护")}</h2>
+                  <p>{tr("在登录注册流程第一页验证客户端。")}</p>
                 </div>
               </div>
               <div className="settings-form-body">
                 <Select
-                  label="验证模式"
+                  label={tr("验证模式")}
                   value={settings.captcha_mode}
                   onChange={(event) =>
                     setSettings({
@@ -3588,7 +3792,7 @@ function AdminSettingsPage({
                     })
                   }
                 >
-                  <option value="none">无</option>
+                  <option value="none">{tr("无")}</option>
                   <option value="turnstile">Cloudflare Turnstile</option>
                   <option value="cap">PoW</option>
                 </Select>
@@ -3610,8 +3814,8 @@ function AdminSettingsPage({
                       value={secrets.turnstile_secret_key}
                       placeholder={
                         settings.turnstile_secret_configured
-                          ? "已配置，留空不修改"
-                          : "请输入 Secret Key"
+                          ? tr("已配置，留空不修改")
+                          : tr("请输入 Secret Key")
                       }
                       onChange={(event) =>
                         setSecrets({
@@ -3626,7 +3830,7 @@ function AdminSettingsPage({
                 {settings.captcha_mode === "cap" && (
                   <div className="form-grid-2">
                     <Input
-                      label="PoW 服务地址"
+                      label={tr("PoW 服务地址")}
                       value={settings.cap_server_url}
                       onChange={(event) =>
                         setSettings({
@@ -3651,8 +3855,8 @@ function AdminSettingsPage({
                       value={secrets.cap_secret_key}
                       placeholder={
                         settings.cap_secret_configured
-                          ? "已配置，留空不修改"
-                          : "请输入 Secret Key"
+                          ? tr("已配置，留空不修改")
+                          : tr("请输入 Secret Key")
                       }
                       onChange={(event) =>
                         setSecrets({
@@ -3666,7 +3870,7 @@ function AdminSettingsPage({
                 )}
                 <div className="settings-action-bar">
                   <Button type="submit" icon={<Check size={15} />}>
-                    保存机器人保护设置
+                    {tr("保存机器人保护设置")}
                   </Button>
                 </div>
               </div>
@@ -3676,8 +3880,8 @@ function AdminSettingsPage({
             <>
               <div className="section-heading">
                 <div>
-                  <h2>OAuth 集成</h2>
-                  <p>配置可用于客户登录和绑定的上游身份提供商。</p>
+                  <h2>{tr("OAuth 集成")}</h2>
+                  <p>{tr("配置可用于客户登录和绑定的上游身份提供商。")}</p>
                 </div>
               </div>
               {provider ? (
@@ -3694,14 +3898,14 @@ function AdminSettingsPage({
                           <strong>{item.display_name}</strong>
                           <span>
                             {item.enabled
-                              ? "已启用"
+                              ? tr("已启用")
                               : item.secret_configured
-                                ? "已配置"
-                                : "未配置"}
+                                ? tr("已配置")
+                                : tr("未配置")}
                           </span>
                         </div>
                         <Badge tone={item.enabled ? "success" : "muted"}>
-                          {item.enabled ? "启用" : "停用"}
+                          {item.enabled ? tr("启用") : tr("停用")}
                         </Badge>
                       </button>
                     ))}
@@ -3723,11 +3927,11 @@ function AdminSettingsPage({
                             updateProvider("enabled", event.target.checked)
                           }
                         />
-                        <span>启用</span>
+                        <span>{tr("启用")}</span>
                       </label>
                     </div>
                     <Input
-                      label="显示名称"
+                      label={tr("显示名称")}
                       value={provider.display_name}
                       onChange={(event) =>
                         updateProvider("display_name", event.target.value)
@@ -3747,8 +3951,8 @@ function AdminSettingsPage({
                         value={provider.client_secret || ""}
                         placeholder={
                           provider.secret_configured
-                            ? "已配置，留空不修改"
-                            : "请输入密钥"
+                            ? tr("已配置，留空不修改")
+                            : tr("请输入密钥")
                         }
                         onChange={(event) =>
                           updateProvider("client_secret", event.target.value)
@@ -3799,7 +4003,7 @@ function AdminSettingsPage({
                       }
                     />
                     <Input
-                      label="回调地址"
+                      label={tr("回调地址")}
                       value={provider.callback_url}
                       readOnly
                     />
@@ -3809,16 +4013,16 @@ function AdminSettingsPage({
                         onClick={testProvider}
                         icon={<Activity size={15} />}
                       >
-                        连接测试
+                        {tr("连接测试")}
                       </Button>
                       <Button type="submit" icon={<Check size={15} />}>
-                        保存 Provider
+                        {tr("保存 Provider")}
                       </Button>
                     </div>
                   </form>
                 </div>
               ) : (
-                <Empty text="暂无可配置的 OAuth Provider" />
+                <Empty text={tr("暂无可配置的 OAuth Provider")} />
               )}
             </>
           )}
@@ -3827,7 +4031,6 @@ function AdminSettingsPage({
     </>
   );
 }
-
 function SecurityItem({
   label,
   status,
@@ -3850,7 +4053,6 @@ function SecurityItem({
     </div>
   );
 }
-
 function ToastView({ toast }: { toast: Toast | null }) {
   return toast ? (
     <div className={`toast ${toast.tone || ""}`}>

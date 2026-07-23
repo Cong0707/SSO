@@ -386,7 +386,7 @@ func (s *Server) provisionUpstreamUser(provider model.UpstreamProvider, identity
 	}
 	user := model.User{
 		Username: username, PasswordHash: hash, PasswordConfigured: false,
-		DisplayName: displayName, AvatarURL: strings.TrimSpace(identity.AvatarURL), Locale: "zh-CN",
+		DisplayName: displayName, AvatarURL: strings.TrimSpace(identity.AvatarURL), Locale: "zhCN",
 		SecurityEmailEnabled: true, Role: "user", Status: "active",
 	}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {

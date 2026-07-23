@@ -29,29 +29,35 @@ func (s *Server) profile(c *gin.Context) {
 
 func (s *Server) updateProfile(c *gin.Context) {
 	var input struct {
-		DisplayName          string `json:"display_name"`
-		AvatarURL            string `json:"avatar_url"`
-		Locale               string `json:"locale"`
-		SecurityEmailEnabled bool   `json:"security_email_enabled"`
+		DisplayName          *string `json:"display_name"`
+		Locale               *string `json:"locale"`
+		SecurityEmailEnabled *bool   `json:"security_email_enabled"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		s.serveError(c, http.StatusBadRequest, "请求格式错误")
 		return
 	}
 	user := s.user(c)
-	input.DisplayName = strings.TrimSpace(input.DisplayName)
-	if len(input.DisplayName) > 100 || !validateURL(input.AvatarURL, true) {
-		s.serveError(c, http.StatusBadRequest, "资料字段格式不正确")
-		return
+	updates := make(map[string]any, 3)
+	if input.DisplayName != nil {
+		displayName := strings.TrimSpace(*input.DisplayName)
+		if len(displayName) > 100 {
+			s.serveError(c, http.StatusBadRequest, "资料字段格式不正确")
+			return
+		}
+		updates["display_name"] = displayName
+		user.DisplayName = displayName
 	}
-	if input.Locale != "zh-CN" && input.Locale != "en" {
-		input.Locale = "zh-CN"
+	if input.Locale != nil {
+		locale := normalizeProfileLocale(*input.Locale)
+		updates["locale"] = locale
+		user.Locale = locale
 	}
-	user.DisplayName = input.DisplayName
-	user.AvatarURL = strings.TrimSpace(input.AvatarURL)
-	user.Locale = input.Locale
-	user.SecurityEmailEnabled = input.SecurityEmailEnabled
-	if err := s.DB.Save(user).Error; err != nil {
+	if input.SecurityEmailEnabled != nil {
+		updates["security_email_enabled"] = *input.SecurityEmailEnabled
+		user.SecurityEmailEnabled = *input.SecurityEmailEnabled
+	}
+	if len(updates) > 0 && s.DB.Model(user).Updates(updates).Error != nil {
 		s.serveError(c, http.StatusInternalServerError, "保存资料失败")
 		return
 	}
@@ -61,18 +67,13 @@ func (s *Server) updateProfile(c *gin.Context) {
 
 func (s *Server) prepareProfileEmail(c *gin.Context) {
 	var input struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email string `json:"email"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		s.serveError(c, http.StatusBadRequest, "请求格式错误")
 		return
 	}
 	user := s.user(c)
-	if user.PasswordConfigured && !security.VerifyPassword(user.PasswordHash, input.Password) {
-		s.serveError(c, http.StatusUnauthorized, "当前密码错误")
-		return
-	}
 	email := strings.ToLower(strings.TrimSpace(input.Email))
 	if !validEmail(email) {
 		s.serveError(c, http.StatusBadRequest, "邮箱格式不正确")
@@ -105,6 +106,19 @@ func (s *Server) prepareProfileEmail(c *gin.Context) {
 	data := s.verificationResponse(code)
 	data["flow_token"] = raw
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
+
+func normalizeProfileLocale(value string) string {
+	switch strings.TrimSpace(value) {
+	case "zhCN", "zh-CN", "zh-Hans":
+		return "zhCN"
+	case "zhTW", "zh-TW", "zh-HK", "zh-MO", "zh-Hant":
+		return "zhTW"
+	case "en", "fr", "ru", "ja", "vi":
+		return strings.TrimSpace(value)
+	default:
+		return "zhCN"
+	}
 }
 
 func (s *Server) completeProfileEmail(c *gin.Context) {

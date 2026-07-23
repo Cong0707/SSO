@@ -204,7 +204,7 @@ func (s *Server) registerComplete(c *gin.Context) {
 		}
 		user = model.User{
 			Username: flow.Username, PasswordHash: flow.PasswordHash,
-			PasswordConfigured: true, DisplayName: flow.Username, Locale: "zh-CN",
+			PasswordConfigured: true, DisplayName: flow.Username, Locale: "zhCN",
 			SecurityEmailEnabled: true, Role: role, Status: "active",
 		}
 		if err := tx.Create(&user).Error; err != nil {

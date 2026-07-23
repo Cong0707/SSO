@@ -87,6 +87,28 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 		}
 	}
 
+	for _, locale := range []string{"zhCN", "en", "fr", "ru", "ja", "vi", "zhTW"} {
+		updated := doJSON(t, client, http.MethodPatch, httpServer.URL+"/api/profile", csrf, map[string]any{"locale": locale})
+		if nestedString(t, updated, "data", "locale") != locale {
+			t.Fatalf("locale %q was not persisted: %#v", locale, updated)
+		}
+	}
+	updated := doJSON(t, client, http.MethodPatch, httpServer.URL+"/api/profile", csrf, map[string]any{"locale": "unsupported", "avatar_url": "https://attacker.invalid/avatar.png"})
+	if nestedString(t, updated, "data", "locale") != "zhCN" {
+		t.Fatalf("unsupported locale did not fall back to zhCN: %#v", updated)
+	}
+	if nestedString(t, updated, "data", "avatar_url") != "" {
+		t.Fatalf("profile update accepted a client-controlled avatar URL: %#v", updated)
+	}
+	var profileAfterUpdate model.User
+	if err := db.First(&profileAfterUpdate, registeredUser.ID).Error; err != nil || profileAfterUpdate.AvatarURL != "" {
+		t.Fatalf("profile update changed stored avatar URL: user=%#v err=%v", profileAfterUpdate, err)
+	}
+	emailBinding := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/profile/emails/prepare", csrf, map[string]any{"email": "alice.secondary@example.com"})
+	if nestedString(t, emailBinding, "data", "flow_token") == "" {
+		t.Fatal("email binding without a password did not create a verification flow")
+	}
+
 	created := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/apps", csrf, map[string]any{"name": "Integration App", "homepage": "http://client.example", "description": "test", "redirect_uri": "http://client.example/callback", "logo_url": "", "public": false})
 	clientID := nestedString(t, created, "data", "app", "client_id")
 	clientSecret := nestedString(t, created, "data", "client_secret")

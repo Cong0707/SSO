@@ -222,7 +222,7 @@ button:disabled {
   z-index: 5;
   right: 0;
   top: calc(100% + 9px);
-  width: 160px;
+  width: 210px;
   padding: 5px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -247,7 +247,7 @@ button:disabled {
 .popover button:hover {
   background: var(--surface-alt);
 }
-.popover-static {
+.popover-language {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -255,12 +255,22 @@ button:disabled {
   color: var(--muted);
   font-size: 12px;
 }
-.popover-static span {
+.popover-language span {
   flex: 1;
 }
-.popover-static strong {
+.popover-language select {
+  min-width: 92px;
+  max-width: 118px;
+  border: 0;
+  outline: 0;
   color: var(--text);
-  font-weight: 600;
+  background: transparent;
+  font: inherit;
+  text-align: right;
+}
+.popover-language option {
+  color: var(--text);
+  background: var(--surface);
 }
 .page-content {
   max-width: 1320px;
@@ -595,6 +605,23 @@ code {
   gap: 10px;
   font-size: 15px;
   font-weight: 650;
+}
+.auth-language {
+  position: absolute;
+  top: 24px;
+  right: 28px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+}
+.auth-language select {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 28px 7px 9px;
+  color: var(--text);
+  background: var(--surface);
+  font-size: 12px;
 }
 .auth-card {
   width: min(100%, 410px);
