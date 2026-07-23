@@ -27,12 +27,15 @@ func TestProvisionUpstreamUserImportsProfileAndAllowsLaterUserEdits(t *testing.T
 		Subject: "42", Username: "octocat", Name: "The Octocat", Email: "octocat@example.com",
 		AvatarURL: "https://avatars.example/octocat.png", EmailVerified: true,
 	}
-	user, err := application.provisionUpstreamUser(provider, identity)
+	user, err := application.provisionUpstreamUser(provider, identity, "vi")
 	if err != nil {
 		t.Fatalf("provision upstream user: %v", err)
 	}
 	if user.Username != "octocat" || user.DisplayName != "The Octocat" || user.AvatarURL == "" {
 		t.Fatalf("profile was not imported: %#v", user)
+	}
+	if user.Locale != "vi" {
+		t.Fatalf("upstream registration did not persist the detected locale: %#v", user)
 	}
 	var importedEmail model.UserEmail
 	if err := db.Where("user_id = ? AND normalized_email = ?", user.ID, "octocat@example.com").First(&importedEmail).Error; err != nil || importedEmail.VerifiedAt == nil {

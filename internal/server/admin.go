@@ -466,7 +466,7 @@ func (s *Server) adminTestEmail(c *gin.Context) {
 		s.serveError(c, http.StatusBadRequest, "测试邮箱无效")
 		return
 	}
-	if err := s.sendVerificationEmail(input.Email, "123456"); err != nil {
+	if err := s.sendVerificationEmail(input.Email, "123456", s.user(c).Locale); err != nil {
 		s.serveError(c, http.StatusBadGateway, "测试邮件发送失败: "+err.Error())
 		return
 	}

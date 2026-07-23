@@ -20,6 +20,7 @@ type telegramLoginRequest struct {
 	AuthDate   int64  `json:"auth_date"`
 	Hash       string `json:"hash"`
 	MergeToken string `json:"merge_token"`
+	Locale     string `json:"locale"`
 }
 
 func (s *Server) telegramLogin(c *gin.Context) {
@@ -49,7 +50,7 @@ func (s *Server) telegramLogin(c *gin.Context) {
 		s.serveError(c, http.StatusUnauthorized, "Telegram 登录数据无效")
 		return
 	}
-	user, err := s.resolveUpstreamUser(provider, identity)
+	user, err := s.resolveUpstreamUser(provider, identity, requestLocale(input.Locale, c.GetHeader("Accept-Language")))
 	if err != nil {
 		s.serveError(c, http.StatusConflict, err.Error())
 		return
@@ -88,7 +89,7 @@ func (s *Server) telegramLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"user": publicUser(&user), "csrf_token": session.CSRFToken, "merged": input.MergeToken != ""}})
 }
 
-func (s *Server) resolveUpstreamUser(provider model.UpstreamProvider, identity upstream.Identity) (model.User, error) {
+func (s *Server) resolveUpstreamUser(provider model.UpstreamProvider, identity upstream.Identity, preferredLocale ...string) (model.User, error) {
 	var relation model.UpstreamIdentity
 	if err := s.DB.Where("provider_id = ? AND external_id = ?", provider.ID, identity.Subject).First(&relation).Error; err == nil {
 		var user model.User
@@ -97,7 +98,7 @@ func (s *Server) resolveUpstreamUser(provider model.UpstreamProvider, identity u
 		}
 		return user, nil
 	}
-	user, err := s.provisionUpstreamUser(provider, identity)
+	user, err := s.provisionUpstreamUser(provider, identity, preferredLocale...)
 	if err != nil {
 		return model.User{}, err
 	}

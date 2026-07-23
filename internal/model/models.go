@@ -124,6 +124,7 @@ type AuthFlow struct {
 	Identifier           string     `gorm:"size:254" json:"-"`
 	Username             string     `gorm:"size:64" json:"-"`
 	Email                string     `gorm:"size:254" json:"-"`
+	Locale               string     `gorm:"size:16" json:"-"`
 	PasswordHash         string     `gorm:"size:512" json:"-"`
 	VerificationCodeHash string     `gorm:"size:64" json:"-"`
 	UserID               *uint64    `gorm:"index" json:"-"`
@@ -183,6 +184,7 @@ type UpstreamOAuthState struct {
 	ProviderID            uint64     `gorm:"not null;index" json:"-"`
 	SessionID             *uint64    `gorm:"index" json:"-"`
 	MergeFlowID           *uint64    `gorm:"index" json:"-"`
+	Locale                string     `gorm:"size:16" json:"-"`
 	TokenHash             string     `gorm:"size:64;uniqueIndex;not null" json:"-"`
 	CodeVerifierEncrypted string     `gorm:"type:text;not null" json:"-"`
 	ReturnTo              string     `gorm:"size:2048" json:"-"`

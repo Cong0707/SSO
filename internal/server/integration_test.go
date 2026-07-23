@@ -58,7 +58,7 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 	}
 	client := &http.Client{Jar: jar, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 
-	identified := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/auth/identify", "", map[string]any{"email": "alice@example.com"})
+	identified := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/auth/identify", "", map[string]any{"email": "alice@example.com", "locale": "ja"})
 	flowToken := nestedString(t, identified, "data", "flow_token")
 	prepared := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/auth/register/prepare", "", map[string]any{"flow_token": flowToken, "username": "alice", "password": "Password123", "confirm_password": "Password123"})
 	verificationCode := nestedString(t, prepared, "data", "debug_code")
@@ -70,6 +70,9 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 	var registeredUser model.User
 	if err := db.Where("username = ?", "alice").First(&registeredUser).Error; err != nil || registeredUser.Role != "admin" {
 		t.Fatalf("first registered user must be a verified admin: user=%#v err=%v", registeredUser, err)
+	}
+	if registeredUser.Locale != "ja" {
+		t.Fatalf("registration did not persist the detected locale: %#v", registeredUser)
 	}
 	var registeredEmail model.UserEmail
 	if err := db.Where("user_id = ? AND normalized_email = ?", registeredUser.ID, "alice@example.com").First(&registeredEmail).Error; err != nil || registeredEmail.VerifiedAt == nil {

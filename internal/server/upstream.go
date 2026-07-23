@@ -188,7 +188,8 @@ func (s *Server) upstreamStart(c *gin.Context) {
 	}
 	stateRecord := model.UpstreamOAuthState{
 		ProviderID: providerRecord.ID, SessionID: sessionID, MergeFlowID: mergeFlowID, TokenHash: security.HashToken(state),
-		CodeVerifierEncrypted: encryptedVerifier, ReturnTo: safeReturnTo(c.Query("return_to")), ExpiresAt: time.Now().Add(10 * time.Minute),
+		CodeVerifierEncrypted: encryptedVerifier, Locale: requestLocale(c.Query("locale"), c.GetHeader("Accept-Language")),
+		ReturnTo: safeReturnTo(c.Query("return_to")), ExpiresAt: time.Now().Add(10 * time.Minute),
 	}
 	if err := s.DB.Create(&stateRecord).Error; err != nil {
 		s.serveError(c, http.StatusInternalServerError, "保存登录状态失败")
@@ -256,7 +257,7 @@ func (s *Server) upstreamCallback(c *gin.Context) {
 			c.Redirect(http.StatusFound, "/login?oauth_error=identity_lookup_failed")
 			return
 		} else {
-			user, err = s.provisionUpstreamUser(providerRecord, identityData)
+			user, err = s.provisionUpstreamUser(providerRecord, identityData, state.Locale)
 			if err != nil {
 				c.Redirect(http.StatusFound, "/login?oauth_error=provision_failed")
 				return
@@ -350,7 +351,7 @@ func providerConfigured(provider model.UpstreamProvider) bool {
 	return provider.ClientID != "" && provider.ClientSecretEncrypted != ""
 }
 
-func (s *Server) provisionUpstreamUser(provider model.UpstreamProvider, identity upstream.Identity) (model.User, error) {
+func (s *Server) provisionUpstreamUser(provider model.UpstreamProvider, identity upstream.Identity, preferredLocale ...string) (model.User, error) {
 	usernameSource := identity.Username
 	if usernameSource == "" {
 		usernameSource = identity.Name
@@ -384,9 +385,13 @@ func (s *Server) provisionUpstreamUser(provider model.UpstreamProvider, identity
 	if displayName == "" {
 		displayName = username
 	}
+	locale := ""
+	if len(preferredLocale) > 0 {
+		locale = preferredLocale[0]
+	}
 	user := model.User{
 		Username: username, PasswordHash: hash, PasswordConfigured: false,
-		DisplayName: displayName, AvatarURL: strings.TrimSpace(identity.AvatarURL), Locale: "zhCN",
+		DisplayName: displayName, AvatarURL: strings.TrimSpace(identity.AvatarURL), Locale: requestLocale(locale, ""),
 		SecurityEmailEnabled: true, Role: "user", Status: "active",
 	}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {

@@ -94,12 +94,12 @@ func (s *Server) prepareProfileEmail(c *gin.Context) {
 	}
 	now := time.Now()
 	userID := user.ID
-	raw, _, err := s.createAuthFlow(model.AuthFlow{Purpose: "profile_email_verify", UserID: &userID, Email: email, VerificationCodeHash: security.HMACToken(s.Cfg.MasterKey, code), LastSentAt: &now, ExpiresAt: now.Add(10 * time.Minute)})
+	raw, _, err := s.createAuthFlow(model.AuthFlow{Purpose: "profile_email_verify", UserID: &userID, Email: email, Locale: user.Locale, VerificationCodeHash: security.HMACToken(s.Cfg.MasterKey, code), LastSentAt: &now, ExpiresAt: now.Add(10 * time.Minute)})
 	if err != nil {
 		s.serveError(c, http.StatusInternalServerError, "创建邮箱验证流程失败")
 		return
 	}
-	if err := s.deliverVerificationCode(email, code); err != nil {
+	if err := s.deliverVerificationCode(email, code, user.Locale); err != nil {
 		s.serveError(c, http.StatusServiceUnavailable, err.Error())
 		return
 	}
@@ -109,16 +109,10 @@ func (s *Server) prepareProfileEmail(c *gin.Context) {
 }
 
 func normalizeProfileLocale(value string) string {
-	switch strings.TrimSpace(value) {
-	case "zhCN", "zh-CN", "zh-Hans":
-		return "zhCN"
-	case "zhTW", "zh-TW", "zh-HK", "zh-MO", "zh-Hant":
-		return "zhTW"
-	case "en", "fr", "ru", "ja", "vi":
-		return strings.TrimSpace(value)
-	default:
-		return "zhCN"
+	if locale, ok := supportedLocale(value); ok {
+		return locale
 	}
+	return "zhCN"
 }
 
 func (s *Server) completeProfileEmail(c *gin.Context) {

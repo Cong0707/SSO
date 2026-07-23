@@ -25,6 +25,7 @@ func (s *Server) identify(c *gin.Context) {
 		Email        string `json:"email"`
 		CaptchaToken string `json:"captcha_token"`
 		MergeToken   string `json:"merge_token"`
+		Locale       string `json:"locale"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		s.serveError(c, http.StatusBadRequest, "请求格式错误")
@@ -83,7 +84,8 @@ func (s *Server) identify(c *gin.Context) {
 	}
 	raw, flow, err := s.createAuthFlow(model.AuthFlow{
 		Purpose: "identify_" + mode, Identifier: email, Email: email, Username: username,
-		UserID: userID, SourceUserID: sourceUserID, SessionID: sourceSessionID, ExpiresAt: time.Now().Add(10 * time.Minute),
+		Locale: requestLocale(input.Locale, c.GetHeader("Accept-Language")), UserID: userID,
+		SourceUserID: sourceUserID, SessionID: sourceSessionID, ExpiresAt: time.Now().Add(10 * time.Minute),
 	})
 	if err != nil {
 		s.serveError(c, http.StatusInternalServerError, "创建认证流程失败")
@@ -156,7 +158,7 @@ func (s *Server) registerPrepare(c *gin.Context) {
 		s.serveError(c, http.StatusInternalServerError, "保存注册流程失败")
 		return
 	}
-	if err := s.deliverVerificationCode(flow.Email, code); err != nil {
+	if err := s.deliverVerificationCode(flow.Email, code, flow.Locale); err != nil {
 		_ = s.DB.Model(&flow).Updates(map[string]any{
 			"purpose": "identify_register", "username": "", "password_hash": "",
 			"verification_code_hash": "", "last_sent_at": nil, "attempts": 0,
@@ -204,7 +206,7 @@ func (s *Server) registerComplete(c *gin.Context) {
 		}
 		user = model.User{
 			Username: flow.Username, PasswordHash: flow.PasswordHash,
-			PasswordConfigured: true, DisplayName: flow.Username, Locale: "zhCN",
+			PasswordConfigured: true, DisplayName: flow.Username, Locale: requestLocale(flow.Locale, ""),
 			SecurityEmailEnabled: true, Role: role, Status: "active",
 		}
 		if err := tx.Create(&user).Error; err != nil {
@@ -370,7 +372,7 @@ func (s *Server) resendVerificationCode(c *gin.Context) {
 		s.serveError(c, http.StatusInternalServerError, "保存验证码失败")
 		return
 	}
-	if err := s.deliverVerificationCode(flow.Email, code); err != nil {
+	if err := s.deliverVerificationCode(flow.Email, code, flow.Locale); err != nil {
 		_ = s.DB.Model(&flow).Updates(map[string]any{"verification_code_hash": oldHash, "last_sent_at": oldSentAt, "attempts": oldAttempts, "expires_at": oldExpiry}).Error
 		s.serveError(c, http.StatusServiceUnavailable, err.Error())
 		return
@@ -416,8 +418,8 @@ func numericCode() (string, error) {
 	return fmt.Sprintf("%06d", value.Int64()), nil
 }
 
-func (s *Server) deliverVerificationCode(email, code string) error {
-	if err := s.sendVerificationEmail(email, code); err != nil {
+func (s *Server) deliverVerificationCode(email, code, locale string) error {
+	if err := s.sendVerificationEmail(email, code, locale); err != nil {
 		if s.Cfg.EmailDebug {
 			return nil
 		}

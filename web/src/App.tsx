@@ -747,6 +747,7 @@ function AuthPage(props: {
           email,
           captcha_token: captchaToken,
           merge_token: mergeToken,
+          locale: props.locale,
         }),
       });
       setFlowToken(data.flow_token);
@@ -1074,6 +1075,7 @@ function AuthPage(props: {
                     key={provider.kind}
                     provider={provider}
                     mergeToken={mergeToken}
+                    locale={props.locale}
                     onSuccess={finish}
                     onError={(message) => props.show(message, "error")}
                   />
@@ -1081,7 +1083,7 @@ function AuthPage(props: {
                   <a
                     className="provider-button"
                     key={provider.kind}
-                    href={`/oauth/upstream/${provider.kind}/start?return_to=${encodeURIComponent(requestedReturnTo)}${mergeToken ? `&merge_token=${encodeURIComponent(mergeToken)}` : ""}`}
+                    href={`/oauth/upstream/${provider.kind}/start?return_to=${encodeURIComponent(requestedReturnTo)}&locale=${encodeURIComponent(props.locale)}${mergeToken ? `&merge_token=${encodeURIComponent(mergeToken)}` : ""}`}
                   >
                     <ProviderIcon kind={provider.kind} />
                     <span>{provider.display_name}</span>
@@ -1108,6 +1110,7 @@ declare global {
 function TelegramLoginButton(props: {
   provider: Provider;
   mergeToken: string;
+  locale: LocaleCode;
   onSuccess: (user: User, csrf: string) => void;
   onError: (message: string) => void;
 }) {
@@ -1125,6 +1128,7 @@ function TelegramLoginButton(props: {
           body: JSON.stringify({
             ...telegramUser,
             merge_token: props.mergeToken,
+            locale: props.locale,
           }),
         });
         props.onSuccess(data.user, data.csrf_token);
@@ -1148,7 +1152,7 @@ function TelegramLoginButton(props: {
       script.remove();
       delete window.XemSSOTelegramAuth;
     };
-  }, [props.mergeToken, props.provider.bot_username]);
+  }, [props.locale, props.mergeToken, props.provider.bot_username]);
   return (
     <div className="provider-button telegram-provider" ref={host}>
       <ProviderIcon kind="telegram" />
