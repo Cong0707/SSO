@@ -32,6 +32,7 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 		WebDir:              filepath.Join(temp, "web"),
 		SessionTTL:          24 * time.Hour,
 		RegistrationEnabled: true,
+		EmailDebug:          true,
 		MasterKey:           bytes.Repeat([]byte{0x41}, 32),
 	}
 	db, err := model.Open(cfg)
@@ -57,10 +58,33 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 	}
 	client := &http.Client{Jar: jar, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 
-	register := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/auth/register", "", map[string]any{"username": "alice", "email": "alice@example.com", "password": "Password123"})
+	identified := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/auth/identify", "", map[string]any{"identifier": "alice"})
+	flowToken := nestedString(t, identified, "data", "flow_token")
+	prepared := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/auth/register/prepare", "", map[string]any{"flow_token": flowToken, "email": "alice@example.com", "password": "Password123", "confirm_password": "Password123"})
+	verificationCode := nestedString(t, prepared, "data", "debug_code")
+	register := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/auth/register/complete", "", map[string]any{"flow_token": flowToken, "code": verificationCode})
 	csrf := nestedString(t, register, "data", "csrf_token")
 	if nestedString(t, register, "data", "user", "username") != "alice" {
 		t.Fatal("registration returned an unexpected user")
+	}
+	var registeredUser model.User
+	if err := db.Where("username = ?", "alice").First(&registeredUser).Error; err != nil || registeredUser.EmailVerifiedAt == nil || registeredUser.Role != "admin" {
+		t.Fatalf("first registered user must be a verified admin: user=%#v err=%v", registeredUser, err)
+	}
+	var registeredEmail model.UserEmail
+	if err := db.Where("user_id = ? AND normalized_email = ?", registeredUser.ID, "alice@example.com").First(&registeredEmail).Error; err != nil || registeredEmail.VerifiedAt == nil || !registeredEmail.Primary {
+		t.Fatalf("verified email binding was not created: email=%#v err=%v", registeredEmail, err)
+	}
+	settings := doJSON(t, client, http.MethodGet, httpServer.URL+"/api/admin/settings", "", nil)
+	settingsData := settings["data"].(map[string]any)
+	if _, leaked := settingsData["smtp_password"]; leaked {
+		t.Fatal("admin settings response leaked SMTP password")
+	}
+	providers := doJSON(t, client, http.MethodGet, httpServer.URL+"/api/admin/providers", "", nil)
+	for _, item := range providers["data"].([]any) {
+		if _, leaked := item.(map[string]any)["client_secret"]; leaked {
+			t.Fatal("admin provider response leaked client secret")
+		}
 	}
 
 	created := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/apps", csrf, map[string]any{"name": "Integration App", "homepage": "http://client.example", "description": "test", "redirect_uri": "http://client.example/callback", "logo_url": "", "public": false})
@@ -145,6 +169,10 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 	deleted := doJSON(t, client, http.MethodDelete, httpServer.URL+"/api/profile", csrf, map[string]any{"password": "Password123"})
 	if deleted["success"] != true {
 		t.Fatalf("expected account deletion to succeed: %#v", deleted)
+	}
+	var retained model.User
+	if err := db.First(&retained, registeredUser.ID).Error; err != nil || retained.Status != "deactivated" || retained.DeactivatedAt == nil {
+		t.Fatalf("deactivated account must remain in the database: user=%#v err=%v", retained, err)
 	}
 }
 

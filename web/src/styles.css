@@ -130,6 +130,9 @@ button:disabled {
 .workspace-label {
   padding: 0 12px 9px;
 }
+.workspace-label.admin-label {
+  margin-top: 22px;
+}
 .sidebar nav {
   display: grid;
   gap: 3px;
@@ -1029,6 +1032,193 @@ code {
   gap: 2px;
 }
 
+.auth-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 14px 0 20px;
+}
+.auth-steps span {
+  height: 3px;
+  border-radius: 99px;
+  background: var(--border);
+}
+.auth-steps span.active {
+  background: var(--text);
+}
+.auth-actions,
+.panel-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.auth-actions .button:first-child {
+  margin-right: auto;
+}
+.captcha-widget {
+  min-height: 64px;
+  display: grid;
+  align-items: center;
+}
+.debug-code,
+.notice {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-alt);
+  color: var(--muted);
+  font-size: 12px;
+}
+.notice.warning {
+  margin-bottom: 16px;
+  border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.email-verification-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-alt);
+}
+.binding-summary {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.binding-summary strong {
+  font-size: 12px;
+}
+.binding-summary span,
+.table-subtitle,
+.binding-admin-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+.segmented-tabs {
+  display: inline-flex;
+  gap: 3px;
+  margin-bottom: 16px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.segmented-tabs button {
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 14px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+.segmented-tabs button.active {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+.admin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(310px, 0.85fr);
+  gap: 16px;
+  align-items: start;
+}
+.admin-list-panel,
+.admin-detail-panel {
+  min-width: 0;
+}
+.admin-detail-panel {
+  position: sticky;
+  top: 80px;
+}
+.table-filters,
+.form-grid-2,
+.settings-grid,
+.provider-settings-list {
+  display: grid;
+  gap: 12px;
+}
+.table-filters {
+  grid-template-columns: minmax(180px, 1fr) 130px auto;
+  align-items: end;
+}
+.form-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.settings-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  margin-bottom: 16px;
+}
+.provider-settings-list {
+  grid-template-columns: 1fr;
+}
+.panel-footer {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.toggle-row.compact {
+  margin: 0;
+}
+.channel-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.channel-card {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+.channel-card:hover,
+.channel-card.active {
+  border-color: var(--border-strong);
+  background: var(--surface-alt);
+}
+.channel-card span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.binding-admin-list {
+  display: grid;
+  gap: 8px;
+}
+.binding-admin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.binding-admin-row > div {
+  min-width: 0;
+}
+
+@media (max-width: 1100px) {
+  .admin-grid,
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .admin-detail-panel {
+    position: static;
+  }
+}
+
 @media (max-width: 900px) {
   .sidebar {
     width: 214px;
@@ -1143,5 +1333,12 @@ code {
   .danger-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+  .table-filters,
+  .form-grid-2 {
+    grid-template-columns: 1fr;
+  }
+  .auth-actions {
+    align-items: stretch;
   }
 }

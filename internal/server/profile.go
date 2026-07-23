@@ -20,7 +20,14 @@ import (
 )
 
 func (s *Server) profile(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": publicUser(s.user(c))})
+	user := s.user(c)
+	emails, _ := s.userEmails(user.ID, false)
+	var identities []model.UpstreamIdentity
+	_ = s.DB.Preload("Provider").Where("user_id = ? AND disabled_at IS NULL", user.ID).Order("id ASC").Find(&identities).Error
+	data := publicUser(user)
+	data["emails"] = emails
+	data["identities"] = identities
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }
 
 func (s *Server) updateProfile(c *gin.Context) {
@@ -47,12 +54,8 @@ func (s *Server) updateProfile(c *gin.Context) {
 		input.Locale = "zh-CN"
 	}
 	if input.Email != "" && input.Email != user.Email {
-		if user.PasswordConfigured && !security.VerifyPassword(user.PasswordHash, input.CurrentPassword) {
-			s.serveError(c, http.StatusUnauthorized, "更换邮箱前请确认当前密码")
-			return
-		}
-		user.Email = input.Email
-		user.EmailVerifiedAt = nil
+		s.serveError(c, http.StatusBadRequest, "更换邮箱需要先完成邮箱验证码校验")
+		return
 	}
 	user.DisplayName = input.DisplayName
 	user.AvatarURL = strings.TrimSpace(input.AvatarURL)
@@ -68,6 +71,94 @@ func (s *Server) updateProfile(c *gin.Context) {
 	}
 	s.audit(c, "profile.updated", user.ID, "")
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": publicUser(user)})
+}
+
+func (s *Server) prepareProfileEmail(c *gin.Context) {
+	var input struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		s.serveError(c, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+	user := s.user(c)
+	if user.PasswordConfigured && !security.VerifyPassword(user.PasswordHash, input.Password) {
+		s.serveError(c, http.StatusUnauthorized, "当前密码错误")
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(input.Email))
+	if !validEmail(email) {
+		s.serveError(c, http.StatusBadRequest, "邮箱格式不正确")
+		return
+	}
+	var count int64
+	if s.DB.Model(&model.UserEmail{}).Where("normalized_email = ? AND disabled_at IS NULL", email).Count(&count); count > 0 {
+		s.serveError(c, http.StatusConflict, "邮箱已被使用")
+		return
+	}
+	code, err := numericCode()
+	if err != nil {
+		s.serveError(c, http.StatusInternalServerError, "生成验证码失败")
+		return
+	}
+	now := time.Now()
+	userID := user.ID
+	raw, _, err := s.createAuthFlow(model.AuthFlow{Purpose: "profile_email_verify", UserID: &userID, Email: email, VerificationCodeHash: security.HMACToken(s.Cfg.MasterKey, code), LastSentAt: &now, ExpiresAt: now.Add(10 * time.Minute)})
+	if err != nil {
+		s.serveError(c, http.StatusInternalServerError, "创建邮箱验证流程失败")
+		return
+	}
+	if err := s.deliverVerificationCode(email, code); err != nil {
+		s.serveError(c, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	data := s.verificationResponse(code)
+	data["flow_token"] = raw
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
+
+func (s *Server) completeProfileEmail(c *gin.Context) {
+	var input struct {
+		FlowToken string `json:"flow_token"`
+		Code      string `json:"code"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		s.serveError(c, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+	flow, err := s.loadAuthFlow(input.FlowToken, "profile_email_verify")
+	if err != nil || flow.UserID == nil || *flow.UserID != s.user(c).ID {
+		s.serveError(c, http.StatusBadRequest, "邮箱验证流程已过期")
+		return
+	}
+	if flow.Attempts >= 8 || !security.ConstantTimeHMACMatch(s.Cfg.MasterKey, flow.VerificationCodeHash, strings.TrimSpace(input.Code)) {
+		_ = s.DB.Model(&flow).UpdateColumn("attempts", gorm.Expr("attempts + 1")).Error
+		s.serveError(c, http.StatusUnauthorized, "邮箱验证码无效")
+		return
+	}
+	now := time.Now()
+	user := s.user(c)
+	err = s.DB.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.AuthFlow{}).Where("id = ? AND used_at IS NULL", flow.ID).Update("used_at", &now)
+		if result.Error != nil || result.RowsAffected != 1 {
+			return fmt.Errorf("邮箱验证流程已被使用")
+		}
+		if err := tx.Model(&model.UserEmail{}).Where("user_id = ?", user.ID).Update("primary", false).Error; err != nil {
+			return err
+		}
+		email := model.UserEmail{UserID: user.ID, OriginalUserID: user.ID, Email: flow.Email, NormalizedEmail: flow.Email, Primary: true, VerifiedAt: &now}
+		if err := tx.Create(&email).Error; err != nil {
+			return err
+		}
+		return tx.Model(user).Updates(map[string]any{"email": flow.Email, "email_verified_at": &now}).Error
+	})
+	if err != nil {
+		s.serveError(c, http.StatusConflict, "邮箱已被使用")
+		return
+	}
+	s.audit(c, "email.bound", user.ID, flow.Email)
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 func (s *Server) changePassword(c *gin.Context) {
@@ -308,13 +399,15 @@ func (s *Server) exportData(c *gin.Context) {
 	var logs []model.AuthorizationLog
 	var events []model.AuditEvent
 	var identities []model.UpstreamIdentity
+	var emails []model.UserEmail
 	s.DB.Where("owner_id = ?", user.ID).Find(&apps)
 	s.DB.Preload("App").Where("user_id = ?", user.ID).Find(&grants)
 	s.DB.Preload("App").Where("user_id = ?", user.ID).Find(&logs)
 	s.DB.Where("user_id = ?", user.ID).Find(&events)
 	s.DB.Preload("Provider").Where("user_id = ?", user.ID).Find(&identities)
+	s.DB.Where("user_id = ?", user.ID).Find(&emails)
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=sso-export-%d.json", user.ID))
-	c.JSON(http.StatusOK, gin.H{"exported_at": time.Now(), "profile": publicUser(user), "applications": apps, "grants": grants, "authorization_logs": logs, "security_events": events, "upstream_identities": identities})
+	c.JSON(http.StatusOK, gin.H{"exported_at": time.Now(), "profile": publicUser(user), "emails": emails, "applications": apps, "grants": grants, "authorization_logs": logs, "security_events": events, "upstream_identities": identities})
 }
 
 func (s *Server) deleteAccount(c *gin.Context) {
@@ -327,15 +420,23 @@ func (s *Server) deleteAccount(c *gin.Context) {
 	}
 	user := s.user(c)
 	err := s.DB.Transaction(func(tx *gorm.DB) error {
-		for _, entry := range []any{&model.Session{}, &model.Grant{}, &model.AuthorizationLog{}, &model.PersonalAccessToken{}, &model.AuditEvent{}, &model.UpstreamIdentity{}, &model.EmailVerificationToken{}} {
-			if err := tx.Unscoped().Where("user_id = ?", user.ID).Delete(entry).Error; err != nil {
-				return err
-			}
-		}
-		if err := tx.Unscoped().Where("owner_id = ?", user.ID).Delete(&model.OAuthApplication{}).Error; err != nil {
+		now := time.Now()
+		if err := tx.Model(user).Updates(map[string]any{"status": "deactivated", "deactivated_at": &now}).Error; err != nil {
 			return err
 		}
-		return tx.Unscoped().Delete(user).Error
+		if err := tx.Model(&model.Session{}).Where("user_id = ? AND revoked_at IS NULL", user.ID).Update("revoked_at", &now).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.PersonalAccessToken{}).Where("user_id = ? AND revoked_at IS NULL", user.ID).Update("revoked_at", &now).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.Grant{}).Where("user_id = ? AND revoked_at IS NULL", user.ID).Update("revoked_at", &now).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.OAuthApplication{}).Where("owner_id = ? AND disabled_at IS NULL", user.ID).Update("disabled_at", &now).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.AuditEvent{UserID: user.ID, Action: "account.deactivated", IP: clientIP(c), UserAgent: c.Request.UserAgent()}).Error
 	})
 	if err != nil {
 		s.serveError(c, http.StatusInternalServerError, "注销账户失败")
@@ -345,42 +446,23 @@ func (s *Server) deleteAccount(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
-func (s *Server) sendEmailVerification(c *gin.Context) {
-	user := s.user(c)
-	if user.EmailVerifiedAt != nil {
-		c.JSON(http.StatusOK, gin.H{"success": true, "message": "邮箱已验证"})
+func (s *Server) startAccountMerge(c *gin.Context) {
+	var input struct {
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil || (s.user(c).PasswordConfigured && !security.VerifyPassword(s.user(c).PasswordHash, input.Password)) {
+		s.serveError(c, http.StatusUnauthorized, "密码错误")
 		return
 	}
-	raw, err := security.RandomToken(32)
+	userID := s.user(c).ID
+	sessionID := s.session(c).ID
+	raw, _, err := s.createAuthFlow(model.AuthFlow{Purpose: "merge_start", SourceUserID: &userID, SessionID: &sessionID, ExpiresAt: time.Now().Add(10 * time.Minute)})
 	if err != nil {
-		s.serveError(c, http.StatusInternalServerError, "生成验证链接失败")
+		s.serveError(c, http.StatusInternalServerError, "创建账号合并流程失败")
 		return
 	}
-	token := model.EmailVerificationToken{UserID: user.ID, TokenHash: security.HashToken(raw), ExpiresAt: time.Now().Add(30 * time.Minute)}
-	if err := s.DB.Create(&token).Error; err != nil {
-		s.serveError(c, http.StatusInternalServerError, "生成验证链接失败")
-		return
-	}
-	link := s.Cfg.Issuer + "/verify-email?token=" + raw
-	s.audit(c, "email.verification_requested", user.ID, "")
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"delivery": "development", "verification_url": link}})
-}
-
-func (s *Server) verifyEmail(c *gin.Context) {
-	raw := c.Query("token")
-	var token model.EmailVerificationToken
-	if raw == "" || s.DB.Where("token_hash = ? AND used_at IS NULL", security.HashToken(raw)).First(&token).Error != nil || token.ExpiresAt.Before(time.Now()) {
-		c.Redirect(http.StatusFound, "/profile?email_verified=failed")
-		return
-	}
-	now := time.Now()
-	_ = s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&token).Update("used_at", &now).Error; err != nil {
-			return err
-		}
-		return tx.Model(&model.User{}).Where("id = ?", token.UserID).Update("email_verified_at", &now).Error
-	})
-	c.Redirect(http.StatusFound, "/profile?email_verified=success")
+	s.audit(c, "account.merge_started", userID, "")
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"merge_token": raw, "login_url": "/login?merge_token=" + raw}})
 }
 
 func (s *Server) uploadAvatar(c *gin.Context) {

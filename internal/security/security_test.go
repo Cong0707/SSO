@@ -37,6 +37,18 @@ func TestEncryptRoundTrip(t *testing.T) {
 	}
 }
 
+func TestHMACTokenRequiresKey(t *testing.T) {
+	firstKey := []byte("first-key-first-key-first-key-12")
+	secondKey := []byte("second-key-second-key-second-key")
+	hash := HMACToken(firstKey, "123456")
+	if !ConstantTimeHMACMatch(firstKey, hash, "123456") {
+		t.Fatal("expected HMAC token to verify")
+	}
+	if ConstantTimeHMACMatch(firstKey, hash, "654321") || ConstantTimeHMACMatch(secondKey, hash, "123456") {
+		t.Fatal("HMAC token verified with wrong code or key")
+	}
+}
+
 func TestLegacyBcryptPasswordVerifies(t *testing.T) {
 	legacy, err := bcrypt.GenerateFromPassword([]byte("LegacyPass123"), bcrypt.DefaultCost)
 	if err != nil {

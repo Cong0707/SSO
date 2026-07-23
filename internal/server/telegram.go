@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -11,13 +12,14 @@ import (
 )
 
 type telegramLoginRequest struct {
-	ID        int64  `json:"id"`
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	Username  string `json:"username"`
-	PhotoURL  string `json:"photo_url"`
-	AuthDate  int64  `json:"auth_date"`
-	Hash      string `json:"hash"`
+	ID         int64  `json:"id"`
+	FirstName  string `json:"first_name"`
+	LastName   string `json:"last_name"`
+	Username   string `json:"username"`
+	PhotoURL   string `json:"photo_url"`
+	AuthDate   int64  `json:"auth_date"`
+	Hash       string `json:"hash"`
+	MergeToken string `json:"merge_token"`
 }
 
 func (s *Server) telegramLogin(c *gin.Context) {
@@ -27,7 +29,7 @@ func (s *Server) telegramLogin(c *gin.Context) {
 		return
 	}
 	var provider model.UpstreamProvider
-	if err := s.DB.Where("kind = ? AND enabled = ?", "telegram", true).First(&provider).Error; err != nil {
+	if err := s.DB.Where("kind = ? AND enabled = ?", "telegram", true).First(&provider).Error; err != nil || !providerConfigured(provider) {
 		s.serveError(c, http.StatusNotFound, "Telegram 未配置")
 		return
 	}
@@ -53,17 +55,42 @@ func (s *Server) telegramLogin(c *gin.Context) {
 		s.serveError(c, http.StatusForbidden, "账号不可用")
 		return
 	}
-	if _, err := s.createSession(c, &user); err != nil {
+	if input.MergeToken != "" {
+		mergeFlow, flowErr := s.loadAuthFlow(input.MergeToken, "merge_start")
+		if flowErr != nil || !s.mergeSessionMatches(c, &mergeFlow) {
+			s.serveError(c, http.StatusBadRequest, "账号合并请求已过期")
+			return
+		}
+		now := time.Now()
+		if *mergeFlow.SourceUserID == user.ID {
+			_, currentSession, _ := s.sessionUser(c)
+			_ = s.DB.Model(&mergeFlow).Update("used_at", &now).Error
+			c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"user": publicUser(&user), "csrf_token": currentSession.CSRFToken, "merged": false}})
+			return
+		}
+		target, _, mergeErr := s.mergeAccounts(*mergeFlow.SourceUserID, user.ID)
+		if mergeErr != nil {
+			s.serveError(c, http.StatusConflict, mergeErr.Error())
+			return
+		}
+		_ = s.DB.Model(&mergeFlow).Update("used_at", &now).Error
+		user = target
+	}
+	session, err := s.createSession(c, &user)
+	if err != nil {
 		s.serveError(c, http.StatusInternalServerError, "创建登录会话失败")
 		return
 	}
 	s.audit(c, "upstream.login.telegram", user.ID, identity.Subject)
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"user": publicUser(&user)}})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"user": publicUser(&user), "csrf_token": session.CSRFToken, "merged": input.MergeToken != ""}})
 }
 
 func (s *Server) resolveUpstreamUser(provider model.UpstreamProvider, identity upstream.Identity) (model.User, error) {
 	var relation model.UpstreamIdentity
 	if err := s.DB.Where("provider_id = ? AND external_id = ?", provider.ID, identity.Subject).First(&relation).Error; err == nil {
+		if relation.DisabledAt != nil {
+			return model.User{}, fmt.Errorf("该 Telegram 登录绑定已被管理员禁用")
+		}
 		var user model.User
 		if userErr := s.DB.First(&user, relation.UserID).Error; userErr != nil {
 			return model.User{}, userErr
@@ -74,7 +101,7 @@ func (s *Server) resolveUpstreamUser(provider model.UpstreamProvider, identity u
 	if err != nil {
 		return model.User{}, err
 	}
-	if err := s.DB.Create(&model.UpstreamIdentity{UserID: user.ID, ProviderID: provider.ID, ExternalID: identity.Subject, ExternalName: identity.Name, ExternalEmail: identity.Email, LastLoginAt: time.Now()}).Error; err != nil {
+	if err := s.DB.Create(&model.UpstreamIdentity{UserID: user.ID, OriginalUserID: user.ID, ProviderID: provider.ID, ExternalID: identity.Subject, ExternalName: identity.Name, ExternalEmail: identity.Email, LastLoginAt: time.Now()}).Error; err != nil {
 		return model.User{}, err
 	}
 	return user, nil

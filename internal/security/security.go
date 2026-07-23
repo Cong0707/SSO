@@ -3,6 +3,7 @@ package security
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -45,6 +46,22 @@ func ConstantTimeTokenMatch(hash, token string) bool {
 	}
 	got := sha256.Sum256([]byte(token))
 	return subtle.ConstantTimeCompare(want, got[:]) == 1
+}
+
+func HMACToken(key []byte, token string) string {
+	digest := hmac.New(sha256.New, key)
+	_, _ = digest.Write([]byte(token))
+	return hex.EncodeToString(digest.Sum(nil))
+}
+
+func ConstantTimeHMACMatch(key []byte, hash, token string) bool {
+	want, err := hex.DecodeString(hash)
+	if err != nil {
+		return false
+	}
+	digest := hmac.New(sha256.New, key)
+	_, _ = digest.Write([]byte(token))
+	return hmac.Equal(want, digest.Sum(nil))
 }
 
 func HashPassword(password string) (string, error) {

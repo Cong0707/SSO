@@ -40,7 +40,7 @@ func seedProviders(db *gorm.DB, cfg config.Config) error {
 		{Kind: "discord", Name: "Discord", ClientID: os.Getenv("SSO_DISCORD_CLIENT_ID"), Secret: os.Getenv("SSO_DISCORD_CLIENT_SECRET"), AuthURL: "https://discord.com/oauth2/authorize", TokenURL: "https://discord.com/api/oauth2/token", UserInfoURL: "https://discord.com/api/users/@me", Scopes: "identify email"},
 		{Kind: "oidc", Name: "OIDC", ClientID: os.Getenv("SSO_OIDC_CLIENT_ID"), Secret: os.Getenv("SSO_OIDC_CLIENT_SECRET"), Issuer: strings.TrimRight(os.Getenv("SSO_OIDC_ISSUER"), "/"), Scopes: "openid profile email"},
 		{Kind: "linuxdo", Name: "LinuxDO", ClientID: os.Getenv("SSO_LINUXDO_CLIENT_ID"), Secret: os.Getenv("SSO_LINUXDO_CLIENT_SECRET"), AuthURL: "https://connect.linux.do/oauth2/authorize", TokenURL: "https://connect.linux.do/oauth2/token", UserInfoURL: "https://connect.linux.do/api/user", Scopes: "user"},
-		{Kind: "telegram", Name: "Telegram", Secret: os.Getenv("SSO_TELEGRAM_BOT_TOKEN")},
+		{Kind: "telegram", Name: "Telegram", ClientID: os.Getenv("SSO_TELEGRAM_BOT_USERNAME"), Secret: os.Getenv("SSO_TELEGRAM_BOT_TOKEN")},
 		{Kind: "wechat", Name: "微信", ClientID: os.Getenv("SSO_WECHAT_CLIENT_ID"), Secret: os.Getenv("SSO_WECHAT_CLIENT_SECRET"), AuthURL: "https://open.weixin.qq.com/connect/qrconnect", TokenURL: "https://api.weixin.qq.com/sns/oauth2/access_token", UserInfoURL: "https://api.weixin.qq.com/sns/userinfo", Scopes: "snsapi_login"},
 	}
 	for _, seed := range seeds {
@@ -50,9 +50,11 @@ func seedProviders(db *gorm.DB, cfg config.Config) error {
 		}
 		isNew := provider.ID == 0
 		if isNew {
-			provider = model.UpstreamProvider{Kind: seed.Kind}
+			provider = model.UpstreamProvider{Kind: seed.Kind, DisplayName: seed.Name}
 		}
-		provider.DisplayName = seed.Name
+		if provider.DisplayName == "" {
+			provider.DisplayName = seed.Name
+		}
 		if seed.ClientID != "" {
 			provider.ClientID = seed.ClientID
 		}
@@ -63,25 +65,28 @@ func seedProviders(db *gorm.DB, cfg config.Config) error {
 			}
 			provider.ClientSecretEncrypted = encrypted
 		}
-		if seed.Issuer != "" {
+		if seed.Issuer != "" || (isNew && provider.IssuerURL == "") {
 			provider.IssuerURL = seed.Issuer
 		}
-		if seed.AuthURL != "" {
+		if provider.AuthorizationURL == "" && seed.AuthURL != "" {
 			provider.AuthorizationURL = seed.AuthURL
 		}
-		if seed.TokenURL != "" {
+		if provider.TokenURL == "" && seed.TokenURL != "" {
 			provider.TokenURL = seed.TokenURL
 		}
-		if seed.UserInfoURL != "" {
+		if provider.UserInfoURL == "" && seed.UserInfoURL != "" {
 			provider.UserInfoURL = seed.UserInfoURL
 		}
-		if seed.EmailInfoURL != "" {
+		if provider.EmailInfoURL == "" && seed.EmailInfoURL != "" {
 			provider.EmailInfoURL = seed.EmailInfoURL
 		}
-		provider.Scopes = seed.Scopes
-		provider.Enabled = provider.ClientID != "" && provider.ClientSecretEncrypted != "" && seed.Kind != "telegram"
-		if seed.Kind == "telegram" {
-			provider.Enabled = provider.ClientSecretEncrypted != ""
+		if provider.Scopes == "" {
+			provider.Scopes = seed.Scopes
+		}
+		if isNew {
+			provider.Enabled = providerConfigured(provider)
+		} else if !providerConfigured(provider) {
+			provider.Enabled = false
 		}
 		var err error
 		if isNew {
@@ -114,13 +119,16 @@ func (s *Server) listProviders(c *gin.Context) {
 	}
 	items := make([]gin.H, 0, len(providers))
 	for _, provider := range providers {
-		if !providerConfigured(provider) || provider.Kind == "telegram" {
+		if !providerConfigured(provider) {
 			continue
 		}
 		items = append(items, gin.H{
 			"id": provider.ID, "kind": provider.Kind, "display_name": provider.DisplayName,
 			"enabled": provider.Enabled, "configured": providerConfigured(provider), "bound": bound[provider.ID],
 		})
+		if provider.Kind == "telegram" {
+			items[len(items)-1]["bot_username"] = provider.ClientID
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
 }
@@ -167,11 +175,19 @@ func (s *Server) upstreamStart(c *gin.Context) {
 		return
 	}
 	var sessionID *uint64
-	if _, session, sessionErr := s.sessionUser(c); sessionErr == nil {
+	var mergeFlowID *uint64
+	if mergeToken := strings.TrimSpace(c.Query("merge_token")); mergeToken != "" {
+		mergeFlow, mergeErr := s.loadAuthFlow(mergeToken, "merge_start")
+		if mergeErr != nil || mergeFlow.SourceUserID == nil || !s.mergeSessionMatches(c, &mergeFlow) {
+			s.serveError(c, http.StatusBadRequest, "账号合并请求已过期")
+			return
+		}
+		mergeFlowID = &mergeFlow.ID
+	} else if _, session, sessionErr := s.sessionUser(c); sessionErr == nil {
 		sessionID = &session.ID
 	}
 	stateRecord := model.UpstreamOAuthState{
-		ProviderID: providerRecord.ID, SessionID: sessionID, TokenHash: security.HashToken(state),
+		ProviderID: providerRecord.ID, SessionID: sessionID, MergeFlowID: mergeFlowID, TokenHash: security.HashToken(state),
 		CodeVerifierEncrypted: encryptedVerifier, ReturnTo: safeReturnTo(c.Query("return_to")), ExpiresAt: time.Now().Add(10 * time.Minute),
 	}
 	if err := s.DB.Create(&stateRecord).Error; err != nil {
@@ -232,6 +248,10 @@ func (s *Server) upstreamCallback(c *gin.Context) {
 		var existing model.UpstreamIdentity
 		identityErr := s.DB.Where("provider_id = ? AND external_id = ?", providerRecord.ID, identityData.Subject).First(&existing).Error
 		if identityErr == nil {
+			if existing.DisabledAt != nil {
+				c.Redirect(http.StatusFound, "/login?oauth_error=identity_disabled")
+				return
+			}
 			if s.DB.First(&user, existing.UserID).Error != nil {
 				c.Redirect(http.StatusFound, "/login?oauth_error=user_missing")
 				return
@@ -240,15 +260,10 @@ func (s *Server) upstreamCallback(c *gin.Context) {
 			c.Redirect(http.StatusFound, "/login?oauth_error=identity_lookup_failed")
 			return
 		} else {
-			if identityData.EmailVerified && validEmail(identityData.Email) {
-				_ = s.DB.Where("LOWER(email) = ?", strings.ToLower(identityData.Email)).First(&user).Error
-			}
-			if user.ID == 0 {
-				user, err = s.provisionUpstreamUser(providerRecord, identityData)
-				if err != nil {
-					c.Redirect(http.StatusFound, "/login?oauth_error=provision_failed")
-					return
-				}
+			user, err = s.provisionUpstreamUser(providerRecord, identityData)
+			if err != nil {
+				c.Redirect(http.StatusFound, "/login?oauth_error=provision_failed")
+				return
 			}
 		}
 	}
@@ -257,26 +272,30 @@ func (s *Server) upstreamCallback(c *gin.Context) {
 		return
 	}
 	var conflict model.UpstreamIdentity
-	if err := s.DB.Where("provider_id = ? AND external_id = ?", providerRecord.ID, identityData.Subject).First(&conflict).Error; err == nil && conflict.UserID != user.ID {
-		c.Redirect(http.StatusFound, "/profile?oauth_error=already_bound")
-		return
-	}
-	var userProviderIdentity model.UpstreamIdentity
-	if err := s.DB.Where("provider_id = ? AND user_id = ?", providerRecord.ID, user.ID).First(&userProviderIdentity).Error; err == nil && userProviderIdentity.ExternalID != identityData.Subject {
-		c.Redirect(http.StatusFound, "/profile?oauth_error=provider_already_bound")
-		return
+	if err := s.DB.Where("provider_id = ? AND external_id = ?", providerRecord.ID, identityData.Subject).First(&conflict).Error; err == nil {
+		if conflict.DisabledAt != nil {
+			c.Redirect(http.StatusFound, "/profile?oauth_error=identity_disabled")
+			return
+		}
+		if conflict.UserID != user.ID {
+			c.Redirect(http.StatusFound, "/profile?oauth_error=already_bound")
+			return
+		}
 	}
 	externalName := strings.TrimSpace(identityData.Name)
 	if externalName == "" {
 		externalName = strings.TrimSpace(identityData.Username)
 	}
 	identity := model.UpstreamIdentity{
-		UserID: user.ID, ProviderID: providerRecord.ID, ExternalID: identityData.Subject,
+		UserID: user.ID, OriginalUserID: user.ID, ProviderID: providerRecord.ID, ExternalID: identityData.Subject,
 		ExternalName: externalName, ExternalEmail: strings.ToLower(strings.TrimSpace(identityData.Email)), LastLoginAt: now,
+	}
+	if identityData.EmailVerified {
+		identity.VerifiedAt = &now
 	}
 	if err := s.DB.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "provider_id"}, {Name: "external_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"external_name", "external_email", "last_login_at", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"external_name", "external_email", "verified_at", "last_login_at", "updated_at"}),
 	}).Create(&identity).Error; err != nil {
 		c.Redirect(http.StatusFound, "/login?oauth_error=bind_failed")
 		return
@@ -287,7 +306,30 @@ func (s *Server) upstreamCallback(c *gin.Context) {
 	}
 	user.LastLoginAt = &now
 	_ = s.DB.Model(&user).Update("last_login_at", &now).Error
-	if state.SessionID == nil {
+	if state.MergeFlowID != nil {
+		var mergeFlow model.AuthFlow
+		if s.DB.Where("id = ? AND purpose = ? AND used_at IS NULL AND expires_at > ?", *state.MergeFlowID, "merge_start", time.Now()).First(&mergeFlow).Error != nil || mergeFlow.SourceUserID == nil || !s.mergeSessionMatches(c, &mergeFlow) {
+			c.Redirect(http.StatusFound, "/login?oauth_error=merge_expired")
+			return
+		}
+		if *mergeFlow.SourceUserID == user.ID {
+			_ = s.DB.Model(&mergeFlow).Update("used_at", &now).Error
+			s.audit(c, "account.merge_cancelled_same_account", user.ID, "")
+			c.Redirect(http.StatusFound, "/profile")
+			return
+		}
+		target, _, mergeErr := s.mergeAccounts(*mergeFlow.SourceUserID, user.ID)
+		if mergeErr != nil {
+			c.Redirect(http.StatusFound, "/login?oauth_error=merge_failed")
+			return
+		}
+		_ = s.DB.Model(&mergeFlow).Update("used_at", &now).Error
+		user = target
+		if _, err := s.createSession(c, &user); err != nil {
+			c.Redirect(http.StatusFound, "/login?oauth_error=session_failed")
+			return
+		}
+	} else if state.SessionID == nil {
 		if _, err := s.createSession(c, &user); err != nil {
 			c.Redirect(http.StatusFound, "/login?oauth_error=session_failed")
 			return
@@ -311,7 +353,7 @@ func (s *Server) buildUpstreamProvider(provider model.UpstreamProvider) (upstrea
 
 func providerConfigured(provider model.UpstreamProvider) bool {
 	if provider.Kind == "telegram" {
-		return provider.ClientSecretEncrypted != ""
+		return provider.ClientID != "" && provider.ClientSecretEncrypted != ""
 	}
 	return provider.ClientID != "" && provider.ClientSecretEncrypted != ""
 }
@@ -360,8 +402,27 @@ func (s *Server) provisionUpstreamUser(provider model.UpstreamProvider, identity
 		user.EmailVerifiedAt = &now
 	}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&model.User{}).Count(&count).Error; err != nil {
+			return err
+		}
+		if count == 0 {
+			user.Role = "admin"
+		}
 		if err := tx.Create(&user).Error; err != nil {
 			return err
+		}
+		if identity.EmailVerified && validEmail(email) {
+			var emailCount int64
+			if err := tx.Model(&model.UserEmail{}).Where("normalized_email = ? AND disabled_at IS NULL", email).Count(&emailCount).Error; err != nil {
+				return err
+			}
+			if emailCount == 0 {
+				verifiedAt := time.Now()
+				if err := tx.Create(&model.UserEmail{UserID: user.ID, OriginalUserID: user.ID, Email: email, NormalizedEmail: email, Primary: true, VerifiedAt: &verifiedAt}).Error; err != nil {
+					return err
+				}
+			}
 		}
 		return tx.Model(&user).Update("password_configured", false).Error
 	}); err != nil {
@@ -385,14 +446,17 @@ func (s *Server) syncUpstreamProfile(user *model.User, identity upstream.Identit
 	}
 	if strings.HasSuffix(strings.ToLower(user.Email), "@users.invalid") && identity.EmailVerified && validEmail(identity.Email) {
 		verifiedEmail := strings.ToLower(strings.TrimSpace(identity.Email))
+		now := time.Now()
+		updates["email"] = verifiedEmail
+		updates["email_verified_at"] = &now
 		var count int64
-		if err := s.DB.Model(&model.User{}).Where("LOWER(email) = ? AND id <> ?", verifiedEmail, user.ID).Count(&count).Error; err != nil {
+		if err := s.DB.Model(&model.UserEmail{}).Where("normalized_email = ? AND disabled_at IS NULL", verifiedEmail).Count(&count).Error; err != nil {
 			return err
 		}
 		if count == 0 {
-			now := time.Now()
-			updates["email"] = verifiedEmail
-			updates["email_verified_at"] = &now
+			if err := s.DB.Create(&model.UserEmail{UserID: user.ID, OriginalUserID: user.ID, Email: verifiedEmail, NormalizedEmail: verifiedEmail, Primary: true, VerifiedAt: &now}).Error; err != nil {
+				return err
+			}
 		}
 	}
 	if len(updates) == 0 {

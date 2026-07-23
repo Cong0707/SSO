@@ -4,7 +4,7 @@
 
 ## 字段映射
 
-| new-api `model.User` | FZ SSO | 处理 |
+| new-api `model.User` | 统一身份中心 | 处理 |
 | --- | --- | --- |
 | `Id` | 不直接复用，写入迁移表映射 | SSO 使用自己的 `uint64` 主键，业务引用通过迁移映射表保存 |
 | `Username` | `users.username` | 需要限制到 32 字符；重复值先人工解决 |

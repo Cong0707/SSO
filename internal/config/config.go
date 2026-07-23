@@ -28,6 +28,7 @@ type Config struct {
 	CookieSecure        bool
 	SessionTTL          time.Duration
 	RegistrationEnabled bool
+	EmailDebug          bool
 	AllowKeyGeneration  bool
 	TrustedProxies      []string
 	MasterKey           []byte
@@ -47,6 +48,7 @@ func Load() (Config, error) {
 		OIDCSigningKeyFile:  env("SSO_OIDC_SIGNING_KEY_FILE", filepath.Join(dataDir, "oidc-signing.pem")),
 		CookieSecure:        envBool("SSO_COOKIE_SECURE", false),
 		RegistrationEnabled: envBool("SSO_REGISTRATION_ENABLED", true),
+		EmailDebug:          envBool("SSO_EMAIL_DEBUG", databaseDriver == "sqlite" || databaseDriver == "sqlite3"),
 		AllowKeyGeneration:  envBool("SSO_ALLOW_KEY_GENERATION", databaseDriver == "sqlite" || databaseDriver == "sqlite3"),
 		TrustedProxies:      envList("SSO_TRUSTED_PROXIES"),
 	}

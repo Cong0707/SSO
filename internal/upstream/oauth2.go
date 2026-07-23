@@ -73,7 +73,7 @@ func fetchJSONIdentity(ctx context.Context, client *http.Client, config Config, 
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "FZ-SSO/1.0")
+	req.Header.Set("User-Agent", "Identity-Center/1.0")
 	resp, err := client.Do(req)
 	if err != nil {
 		return Identity{}, err
@@ -118,7 +118,7 @@ func fetchGitHubEmail(ctx context.Context, client *http.Client, endpoint, access
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "FZ-SSO/1.0")
+	req.Header.Set("User-Agent", "Identity-Center/1.0")
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", false, err

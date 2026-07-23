@@ -1,16 +1,20 @@
-# FZ SSO
+# 统一身份中心
 
-FZ SSO 是面向自有服务的统一用户管理与 OAuth 2.0 / OpenID Connect 身份中心。界面参考 `Cong0707/new-api` 默认前端的中性主题、紧凑侧栏和账号安全设置，但业务模型独立于 AI 网关。
+统一身份中心是面向自有服务的用户管理与 OAuth 2.0 / OpenID Connect 服务。界面参考 `Cong0707/new-api` 默认前端的中性主题、紧凑侧栏和账号安全设置，但业务模型独立于 AI 网关。
 
 ## 已实现能力
 
-- 用户注册、登录、Cookie 会话、设备管理、退出其它设备和安全审计。
-- 用户资料、邮箱验证回放链接、密码修改、TOTP MFA、一次性备用码、头像上传、JSON 数据导出和账户注销。
+- 三页式注册/登录：用户名或邮箱识别、人机验证、密码、注册邮箱验证码，以及按需出现的 MFA 页面。
+- 注册邮箱必须验证成功后才创建账号；本地 SQLite 可显式启用 `SSO_EMAIL_DEBUG` 展示调试验证码，生产环境禁止启用。
+- 用户资料、多邮箱与多第三方身份绑定、密码修改、TOTP MFA、一次性备用码、头像上传、设备管理、PAT、JSON 数据导出和安全审计。
+- 账号注销采用永久保留模型：账号状态改为 `deactivated`，会话和凭证撤销，数据库记录不物理删除。
+- 账号合并需要先确认当前密码，再登录另一个账号；邮箱和第三方身份合并到 ID 较小的账号，原账号标记为 `merged` 并永久保留供审计。
 - OAuth 应用创建、编辑、删除、客户端密钥轮换和应用图标。
 - OAuth 授权码、强制 PKCE、刷新令牌、撤销、授权同意页、授权日志和已授权应用管理。
 - OIDC Discovery、JWKS、`id_token`、`userinfo` 和标准 Bearer PAT API 认证。
 - GitHub、Discord、LinuxDO、通用 OIDC、微信的统一上游 Provider 接口；Telegram Login Widget 使用独立签名校验接口。
-- 第三方首次登录自动注册并导入用户名、显示名、已验证邮箱和头像；用户可在个人资料中修改。第三方账号首次设置本地密码时不要求旧密码。
+- 第三方首次登录自动注册并导入用户名、显示名、已验证邮箱和头像；不会仅凭相同邮箱静默合并账号。一个账号允许绑定多个邮箱和同一 Provider 的多个外部身份。
+- 管理员侧栏包含“用户管理”和“系统设置”：可查看正常、注销和已合并账号，管理所有渠道绑定，配置 SMTP、`none / turnstile / cap` 人机验证，以及全部上游 Provider。
 - PostgreSQL 是默认数据库，OAuth 授权码、访问令牌和刷新令牌也持久化在 GORM 数据库中；SQLite 仅用于本地演示和测试。
 - 邀请码/邀请系统已移除，注册不再依赖邀请码。
 
@@ -22,6 +26,11 @@ FZ SSO 是面向自有服务的统一用户管理与 OAuth 2.0 / OpenID Connect 
 $env:SSO_DATABASE_DRIVER = "postgres"
 $env:SSO_DATABASE_DSN = "host=127.0.0.1 user=sso password=change-me dbname=sso port=5432 sslmode=disable TimeZone=UTC"
 $env:SSO_ALLOW_KEY_GENERATION = "true" # 仅本地演示
+$env:SSO_SMTP_HOST = "smtp.example.com"
+$env:SSO_SMTP_PORT = "587"
+$env:SSO_SMTP_USERNAME = "mailer@example.com"
+$env:SSO_SMTP_PASSWORD = "replace-me"
+$env:SSO_SMTP_FROM = "mailer@example.com"
 go run ./cmd/sso
 ```
 
@@ -31,6 +40,7 @@ go run ./cmd/sso
 $env:SSO_DATABASE_DRIVER = "sqlite"
 $env:SSO_DATABASE_DSN = "data/sso.db"
 $env:SSO_ALLOW_KEY_GENERATION = "true"
+$env:SSO_EMAIL_DEBUG = "true" # 仅本机调试，页面会显示验证码
 go run ./cmd/sso
 ```
 
@@ -42,7 +52,9 @@ npm install
 npm run dev
 ```
 
-默认后端/前端开发端口是 `8080` / `5174`。如果端口被占用，设置 `SSO_ADDR`、`SSO_ISSUER` 并同步修改 `web/vite.config.ts` 代理端口。本轮验证使用 `8082` / `5174`。
+默认后端/前端开发端口是 `8080` / `5174`。如果端口被占用，设置 `SSO_ADDR`、`SSO_ISSUER` 并同步修改 `web/vite.config.ts` 代理端口。
+
+完成邮箱验证的第一个账号自动成为管理员。管理员登录后从侧栏进入 `管理 -> 系统设置` 配置邮件、Captcha 和第三方登录；未启用或未完整配置的登录方式不会显示在公开认证页。
 
 生产构建：
 
@@ -94,7 +106,7 @@ GET  /oauth/jwks.json
 
 `SSO_MASTER_KEY_FILE` 用于加密 MFA、上游客户端密钥和 OAuth 令牌载荷；`SSO_OIDC_SIGNING_KEY_FILE` 用于签发 OIDC ID Token。两者必须和数据库一起备份，权限应限制为服务用户。OAuth 令牌只在数据库中保存 SHA-256 索引和 AES-GCM 加密载荷，不再使用单机 BuntDB 文件。
 
-没有配置 SMTP 时，邮箱验证接口返回开发环境回放链接，不应在公网生产环境直接展示该响应；接入邮件服务时只需替换发送实现，不改变验证 token 数据结构。
+注册和邮箱换绑验证码使用 master key 计算 HMAC-SHA256，10 分钟过期，限制尝试次数并带 60 秒重发间隔。生产环境必须通过环境变量引导 SMTP，或在首个管理员创建前由部署流程写入系统设置；`SSO_EMAIL_DEBUG` 必须保持为 `false`。
 
 ## 新增登录方式
 

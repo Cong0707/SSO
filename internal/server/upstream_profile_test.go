@@ -34,6 +34,9 @@ func TestProvisionUpstreamUserImportsProfileAndAllowsLaterUserEdits(t *testing.T
 	if user.Username != "octocat" || user.DisplayName != "The Octocat" || user.Email != "octocat@example.com" || user.AvatarURL == "" {
 		t.Fatalf("profile was not imported: %#v", user)
 	}
+	if user.Role != "admin" {
+		t.Fatalf("the first verified upstream account must bootstrap admin access: %#v", user)
+	}
 	if user.PasswordConfigured {
 		t.Fatal("upstream-created account must require the user to configure a local password")
 	}

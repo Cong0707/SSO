@@ -39,7 +39,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("FZ SSO listening on %s (issuer %s)", cfg.Addr, cfg.Issuer)
+		log.Printf("Identity Center listening on %s (issuer %s)", cfg.Addr, cfg.Issuer)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("serve HTTP: %v", err)
 		}

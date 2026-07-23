@@ -104,6 +104,12 @@ func New(cfg config.Config, db *gorm.DB) (*Server, error) {
 	if err := seedProviders(db, cfg); err != nil {
 		return nil, err
 	}
+	if err := seedSettings(db, cfg); err != nil {
+		return nil, err
+	}
+	if err := validateCaptchaSettings(app.setting(settingCaptchaMode, "none"), nil, app.setting); err != nil {
+		return nil, fmt.Errorf("invalid captcha settings: %w", err)
+	}
 	return app, nil
 }
 
@@ -122,13 +128,17 @@ func (s *Server) Router() *gin.Engine {
 	router.POST("/oauth/userinfo", s.oauthUserInfo)
 	router.GET("/oauth/upstream/:kind/start", s.upstreamStart)
 	router.GET("/oauth/upstream/:kind/callback", s.upstreamCallback)
-	router.GET("/verify-email", s.verifyEmail)
 	router.GET("/media/avatars/:file", s.avatarFile)
 
 	api := router.Group("/api")
+	api.GET("/auth/config", s.authConfig)
 	api.GET("/auth/me", s.currentUser)
-	api.POST("/auth/register", s.register)
-	api.POST("/auth/login", s.login)
+	api.POST("/auth/identify", s.identify)
+	api.POST("/auth/register/prepare", s.registerPrepare)
+	api.POST("/auth/register/complete", s.registerComplete)
+	api.POST("/auth/login/password", s.loginPassword)
+	api.POST("/auth/login/mfa", s.loginMFA)
+	api.POST("/auth/email/resend", s.resendVerificationCode)
 	api.POST("/auth/telegram", s.telegramLogin)
 	api.POST("/auth/logout", s.requireAuth, s.requireSession, s.requireCSRF, s.logout)
 	api.POST("/auth/logout-all", s.requireAuth, s.requireSession, s.requireCSRF, s.logoutAll)
@@ -146,8 +156,9 @@ func (s *Server) Router() *gin.Engine {
 	api.DELETE("/grants/:id", s.requireAuth, s.requireCSRF, s.revokeGrant)
 	api.GET("/profile", s.requireAuth, s.profile)
 	api.PATCH("/profile", s.requireAuth, s.requireCSRF, s.updateProfile)
+	api.POST("/profile/emails/prepare", s.requireAuth, s.requireSession, s.requireCSRF, s.prepareProfileEmail)
+	api.POST("/profile/emails/complete", s.requireAuth, s.requireSession, s.requireCSRF, s.completeProfileEmail)
 	api.POST("/profile/avatar", s.requireAuth, s.requireSession, s.requireCSRF, s.uploadAvatar)
-	api.POST("/profile/email-verification", s.requireAuth, s.requireSession, s.requireCSRF, s.sendEmailVerification)
 	api.POST("/profile/password", s.requireAuth, s.requireSession, s.requireCSRF, s.changePassword)
 	api.POST("/profile/mfa/setup", s.requireAuth, s.requireSession, s.requireCSRF, s.setupMFA)
 	api.POST("/profile/mfa/enable", s.requireAuth, s.requireSession, s.requireCSRF, s.enableMFA)
@@ -160,7 +171,24 @@ func (s *Server) Router() *gin.Engine {
 	api.GET("/profile/audit", s.requireAuth, s.listAudit)
 	api.GET("/profile/export", s.requireAuth, s.exportData)
 	api.DELETE("/profile", s.requireAuth, s.requireSession, s.requireCSRF, s.deleteAccount)
+	api.POST("/profile/merge/start", s.requireAuth, s.requireSession, s.requireCSRF, s.startAccountMerge)
 	api.GET("/providers", s.listProviders)
+	api.Any("/cap/*proxyPath", s.capProxy)
+
+	admin := api.Group("/admin", s.requireAuth, s.requireSession, s.requireAdmin)
+	admin.GET("/users", s.adminListUsers)
+	admin.GET("/users/:id", s.adminGetUser)
+	admin.PATCH("/users/:id", s.requireCSRF, s.adminUpdateUser)
+	admin.GET("/channels", s.adminListChannels)
+	admin.GET("/channels/:kind/bindings", s.adminListChannelBindings)
+	admin.DELETE("/bindings/email/:id", s.requireCSRF, s.adminDisableEmailBinding)
+	admin.DELETE("/bindings/upstream/:id", s.requireCSRF, s.adminDisableUpstreamBinding)
+	admin.GET("/settings", s.adminGetSettings)
+	admin.PATCH("/settings", s.requireCSRF, s.adminUpdateSettings)
+	admin.POST("/settings/email/test", s.requireCSRF, s.adminTestEmail)
+	admin.GET("/providers", s.adminListProviders)
+	admin.PATCH("/providers/:id", s.requireCSRF, s.adminUpdateProvider)
+	admin.POST("/providers/:id/test", s.requireCSRF, s.adminTestProvider)
 
 	router.NoRoute(s.serveWeb)
 	return router
@@ -170,7 +198,7 @@ func (s *Server) requestContext(c *gin.Context) {
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("X-Frame-Options", "DENY")
 	c.Header("Referrer-Policy", "same-origin")
-	c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'")
+	c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' https://challenges.cloudflare.com https://telegram.org; frame-src https://challenges.cloudflare.com https://oauth.telegram.org https://telegram.org; connect-src 'self' https://challenges.cloudflare.com")
 	c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 	if s.Cfg.CookieSecure {
 		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
@@ -188,7 +216,7 @@ func (s *Server) serveWeb(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "接口不存在"})
 		return
 	}
-	if path == "/" || strings.HasPrefix(path, "/dashboard") || strings.HasPrefix(path, "/apps") || strings.HasPrefix(path, "/authorizations") || strings.HasPrefix(path, "/grants") || strings.HasPrefix(path, "/profile") || strings.HasPrefix(path, "/consent") || strings.HasPrefix(path, "/login") || strings.HasPrefix(path, "/register") {
+	if path == "/" || strings.HasPrefix(path, "/dashboard") || strings.HasPrefix(path, "/apps") || strings.HasPrefix(path, "/authorizations") || strings.HasPrefix(path, "/grants") || strings.HasPrefix(path, "/profile") || strings.HasPrefix(path, "/admin") || strings.HasPrefix(path, "/consent") || strings.HasPrefix(path, "/login") || strings.HasPrefix(path, "/register") {
 		path = "/index.html"
 	}
 	file := filepath.Join(s.Cfg.WebDir, filepath.Clean(strings.TrimPrefix(path, "/")))
@@ -235,6 +263,15 @@ func (s *Server) requireAuth(c *gin.Context) {
 func (s *Server) requireSession(c *gin.Context) {
 	if _, ok := c.Get("session"); !ok {
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "此操作需要浏览器登录会话"})
+		c.Abort()
+		return
+	}
+	c.Next()
+}
+
+func (s *Server) requireAdmin(c *gin.Context) {
+	if s.user(c).Role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "需要管理员权限"})
 		c.Abort()
 		return
 	}
@@ -330,7 +367,7 @@ func (s *Server) revokeCurrentSession(c *gin.Context) {
 func (s *Server) user(c *gin.Context) *model.User       { return c.MustGet("user").(*model.User) }
 func (s *Server) session(c *gin.Context) *model.Session { return c.MustGet("session").(*model.Session) }
 func publicUser(user *model.User) gin.H {
-	return gin.H{"id": user.ID, "username": user.Username, "email": user.Email, "display_name": user.DisplayName, "avatar_url": user.AvatarURL, "locale": user.Locale, "email_verified": user.EmailVerifiedAt != nil, "mfa_enabled": user.MFAEnabled, "password_configured": user.PasswordConfigured, "role": user.Role, "security_email_enabled": user.SecurityEmailEnabled, "created_at": user.CreatedAt, "last_login_at": user.LastLoginAt}
+	return gin.H{"id": user.ID, "username": user.Username, "email": user.Email, "display_name": user.DisplayName, "avatar_url": user.AvatarURL, "locale": user.Locale, "email_verified": user.EmailVerifiedAt != nil, "mfa_enabled": user.MFAEnabled, "password_configured": user.PasswordConfigured, "role": user.Role, "status": user.Status, "security_email_enabled": user.SecurityEmailEnabled, "created_at": user.CreatedAt, "last_login_at": user.LastLoginAt}
 }
 func clientIP(c *gin.Context) string {
 	return c.ClientIP()

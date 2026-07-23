@@ -1,56 +1,65 @@
-# SSO 安全审计
+# 统一身份中心安全审计
 
-审计范围：当前 `D:\Develop\Server\SSO` 代码、OAuth/OIDC 运行流程、账户资料接口、Docker/Kubernetes 清单和本地集成测试。审计依据优先采用实际代码路径和测试结果。
+审计日期：2026-07-23
 
-## 已修复或已落实
+审计范围：Go API、React 认证与管理页面、OAuth/OIDC、上游身份 Provider、账号合并/注销、邮箱验证码、Captcha、Docker Compose 和 Kubernetes 清单。结论以本轮实际代码路径、自动化测试和浏览器验收为准。
 
-- 移除邀请码数据模型、注册参数、API 和前端入口，注册不再受邀请系统影响。
-- 用户密码使用 Argon2id；兼容 new-api 的 bcrypt 哈希，并在成功登录后升级。
-- Session、PAT、上游 OAuth state、客户端密钥和 OAuth token 索引均不保存明文；OAuth token 载荷使用 AES-GCM 加密，查找使用 SHA-256 摘要。
-- Cookie 设置 `HttpOnly`、`SameSite=Lax`，状态变更接口要求 CSRF；PAT 请求不依赖浏览器 CSRF。
-- OAuth 应用回调地址使用精确匹配；授权码流程强制 PKCE，state 单次使用且有过期时间；上游回调也采用一次性 state 和 PKCE。
-- GitHub 邮箱只接受 `/user/emails` 返回的 `verified=true` 邮箱，优先 `primary=true`，不再把 `/user` 的普通邮箱当成已验证。
-- OIDC discovery 严格校验 issuer；issuer、authorization、token 和 userinfo endpoint 仅允许 HTTPS 或本机 HTTP。
-- Telegram 校验 HMAC-SHA256、字段排序、bot token 派生密钥，并拒绝未来时间和超过 24 小时的 `auth_date`。
-- 上游登录方式通过 `internal/upstream.Provider` 抽象，核心绑定、资料同步、会话创建流程不依赖具体供应商。
-- 第三方新用户保存 subject、用户名、显示名、邮箱和头像；已验证邮箱可替换 `@users.invalid` 占位邮箱；用户自行修改过的资料不会被后续上游登录覆盖。
-- 生产配置缺少共享 master key 或 OIDC 签名 key 时启动失败；Kubernetes 通过 Secret 挂载共享密钥。
-- `X-Forwarded-For` 不再无条件信任，使用 `SSO_TRUSTED_PROXIES` 配置 Gin 可信代理；响应增加 CSP、HSTS（Secure Cookie 开启时）、Permissions-Policy 等安全头。
-- Kubernetes 清单包含非 root、禁止提权、只读根文件系统、资源限制、健康探针、PVC 和 PostgreSQL NetworkPolicy。
+## 本轮已修复
 
-## 仍需在生产环境补齐
+- 注册账号只有在邮箱验证码通过后才创建；验证码使用 master key 计算 HMAC-SHA256，10 分钟过期，最多尝试 8 次，重发间隔 60 秒，数据库单独泄露时不能离线枚举六位验证码。
+- `SSO_EMAIL_DEBUG` 默认仅在 SQLite 开发模式启用；Compose 和 Kubernetes 显式关闭。生产响应不会包含验证码。
+- 合并令牌绑定到发起账号的浏览器 Session、账号 ID 和 10 分钟有效期，泄露的 URL 不能在另一浏览器中完成合并。
+- 登录同一个账号会取消合并，不创建额外会话；合并成功后撤销两个原账号的 Session、PAT 和来源账号 Grant。
+- 注销和合并均不物理删除用户；状态分别为 `deactivated`、`merged`，保留 `deactivated_at` 和 `merged_into_user_id` 供管理员审计。
+- 邮箱和第三方身份记录保存 `original_user_id`；合并只改变当前归属，不丢失来源。
+- 同一个账号允许多个邮箱及同一 Provider 的多条绑定；同一个 `provider_id + external_id` 仍只能归属一个账号。
+- 管理员禁用的第三方身份不能通过后续登录自动恢复；禁用绑定保留记录。
+- 第三方新账号不会仅凭“相同邮箱”静默并入现有账号，必须由用户明确发起账号合并。
+- Provider 和 SMTP Secret 只允许覆盖写入，管理员 API 只返回 `*_configured` 状态，不返回明文。
+- 系统设置和用户管理均要求浏览器 Session、管理员角色；状态变更继续要求 CSRF。
+- 最后一个有效管理员不能被降级；管理员不能在当前会话中注销自己；已合并原账号不能重新启用。
+- Turnstile 使用 Cloudflare `siteverify`；Cap 使用独立 `siteverify`。Cap 代理只允许 GET/POST 且路径必须位于当前 Site Key 下，避免形成通用反向代理。
+- 未配置或未启用的 Provider 不进入公开接口；Cap 前端代码仅在模式启用后动态加载。
+- Session、PAT、上游 OAuth state、客户端密钥和 OAuth token 均不保存明文；OAuth token 载荷使用 AES-GCM 加密。
+- OAuth 回调地址精确匹配，授权码流程强制 PKCE，上游 OAuth state 单次使用且带过期时间。
+- Cookie 使用 `HttpOnly`、`SameSite=Lax`；生产启用 Secure Cookie 时发送 HSTS。响应包含 CSP、Permissions-Policy、X-Frame-Options 等安全头。
+- Kubernetes 清单使用非 root、禁止提权、只读根文件系统、资源限制、健康探针和 NetworkPolicy。
 
-### 中风险：登录限流与账号锁定
+## 剩余风险
 
-当前没有基于 IP、账号标识或设备的登录失败限流。生产部署应接入网关/WAF 或共享 Redis 限流，并对 MFA 失败单独计数；不能只依赖单 Pod 内存状态。
+### 中风险：分布式限流
 
-### 中风险：邮件投递仍是开发回放
+单个认证流程限制密码/MFA/邮箱验证码失败次数，但尚未实现跨 Pod 的 IP、账号和设备级全局限流。生产环境应在 Ingress/API Gateway 或 Redis 中实现共享限流，并对 `identify`、密码、MFA、验证码重发和 Provider 回调分别设置策略。
 
-邮箱验证接口在未接入 SMTP 时会直接返回验证 URL。公网部署前必须替换为邮件队列/SMTP 发送，接口只返回通用成功消息，避免泄露验证 token。
+### 中风险：SMTP 传输能力
 
-### 中风险：头像存储是本地 PVC
+当前使用 Go 标准库 `smtp.SendMail`，适合 STARTTLS SMTP 服务，但不支持 SMTPS 465、OAuth2 SMTP、队列和重试。正式部署建议替换为邮件服务 API 或持久化任务队列；在投递确认前不要消耗验证码流程。
 
-当前头像写入 `/app/data/media/avatars`。Kubernetes 清单默认单副本加 `ReadWriteOnce` PVC；需要多副本时应改为对象存储或 RWX 卷，并增加内容扫描和旧头像清理。
+### 中风险：头像存储
 
-### 中风险：上游自动按已验证邮箱关联
+头像仍写入本地 PVC。多副本部署应迁移到对象存储或 RWX 卷，并增加恶意内容扫描、配额与孤儿对象清理。
 
-首次上游登录若提供已验证邮箱，会尝试关联已有本地账号。只应信任经过明确配置、issuer 固定且可信的上游；高安全租户可以关闭自动邮箱关联，改为登录本地账号后再绑定。
+### 中风险：合并冲突策略
 
-### 低风险：密钥轮换和 Secret 生命周期
+合并会保留 ID 较小账号的显示名和头像，仅在字段为空时从另一账号补充；MFA、密码和管理员角色按安全优先规则叠加。涉及同一业务应用的重复 Grant、应用所有权和下游业务数据时，需要业务方定义更细的冲突策略。
 
-master key 轮换需要先支持多版本解密再重新加密；OIDC signing key 轮换需要同时发布旧公钥和新公钥一段时间。当前清单中的 `sso-secrets.example.yaml` 仅是模板，不能直接用于生产。
+### 低风险：密钥轮换
 
-### 低风险：反向代理边界
+master key 尚未支持多版本解密和在线重新加密；OIDC signing key 尚未支持新旧 JWKS 并行发布。生产轮换前应实现 key version 和过渡窗口。
 
-`SSO_TRUSTED_PROXIES` 必须填写实际 ingress/controller 网段，不能照抄示例的宽网段。HTTPS 终止点、Secure Cookie、HSTS 和 `SSO_ISSUER` 必须保持一致。
+### 低风险：可信代理配置
 
-## 验证记录
+`SSO_TRUSTED_PROXIES` 必须限制为实际 Ingress 网段。示例的 `10.0.0.0/8` 不能不经评估直接用于公网集群。
 
-- `go test ./... -count=1`
+## 验证
+
+- `go test ./...`
 - `go vet ./...`
 - `npm run typecheck`
 - `npm run build`
-- 上游 provider 单元测试覆盖 GitHub verified email、OIDC issuer/endpoint 校验、Telegram future `auth_date` 和自定义 Provider 注册。
-- OAuth 集成测试覆盖注册、应用创建、授权同意、PKCE token 交换、userinfo、PAT 和账户注销。
+- `npm audit --omit=dev`：0 vulnerabilities
+- 使用 PyYAML 解析 `docker-compose.yml` 和全部 Kubernetes YAML：通过
+- 浏览器：完成三页式首个管理员注册，验证码页、管理员菜单、系统设置、用户详情和移动端 390x844 布局均通过。
+- 浏览器：公开认证页在 `captcha_mode=none` 且 Provider 未配置时不显示未完成的登录项，Cap chunk 未加载。
 
-本机未安装 Docker、kubectl 或 kustomize，因此容器启动和集群 apply 需要在具备对应工具的 CI/集群环境中继续验证。
+当前机器未安装 Docker 和 kubectl，因此未执行镜像构建、Compose 启动和 `kubectl apply --dry-run`。这些步骤需在 CI 或具备相应工具的部署机继续验证。
