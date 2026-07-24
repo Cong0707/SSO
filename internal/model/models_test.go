@@ -114,6 +114,9 @@ func TestMigrateLocaleSourcesUsesOnlyExplicitLifecycleEvents(t *testing.T) {
 	users := []User{
 		{Username: "mapped-unknown", PasswordHash: "hash", Locale: "en", LocaleSource: LocaleSourceUnknown, Role: "user", Status: "active"},
 		{Username: "mapped-explicit", PasswordHash: "hash", Locale: "zhCN", LocaleSource: LocaleSourceUnknown, Role: "user", Status: "active"},
+		{Username: "mapped-browser", PasswordHash: "hash", Locale: "ja", LocaleSource: LocaleSourceBrowser, Role: "user", Status: "active"},
+		{Username: "mapped-browser-repair", PasswordHash: "hash", Locale: "fr", LocaleSource: LocaleSourceUser, Role: "user", Status: "active"},
+		{Username: "mapped-browser-with-later-choice", PasswordHash: "hash", Locale: "fr", LocaleSource: LocaleSourceUser, Role: "user", Status: "active"},
 		{Username: "native", PasswordHash: "hash", Locale: "ja", LocaleSource: LocaleSourceUnknown, Role: "user", Status: "active"},
 	}
 	if err := db.Create(&users).Error; err != nil {
@@ -123,6 +126,9 @@ func TestMigrateLocaleSourcesUsesOnlyExplicitLifecycleEvents(t *testing.T) {
 	mappings := []IdentityMigrationMapping{
 		{CreatedAt: mappedAt, BatchID: "batch", SourceSystem: "new-api", SourceUserID: 1, SSOUserID: users[0].ID},
 		{CreatedAt: mappedAt, BatchID: "batch", SourceSystem: "new-api", SourceUserID: 2, SSOUserID: users[1].ID},
+		{CreatedAt: mappedAt, BatchID: "batch", SourceSystem: "new-api", SourceUserID: 3, SSOUserID: users[2].ID},
+		{CreatedAt: mappedAt, BatchID: "batch", SourceSystem: "new-api", SourceUserID: 4, SSOUserID: users[3].ID},
+		{CreatedAt: mappedAt, BatchID: "batch", SourceSystem: "new-api", SourceUserID: 5, SSOUserID: users[4].ID},
 	}
 	if err := db.Create(&mappings).Error; err != nil {
 		t.Fatal(err)
@@ -132,9 +138,39 @@ func TestMigrateLocaleSourcesUsesOnlyExplicitLifecycleEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
+	events := []LifecycleEvent{
+		{
+			ID: "locale-event-explicit", CreatedAt: now, UserID: users[1].ID, IdentityVersion: 2,
+			Type: "profile.updated", Payload: `{"locale":"zhCN","locale_source":"user"}`, NextAttemptAt: now,
+		},
+		{
+			ID: "locale-event-browser", CreatedAt: now, UserID: users[2].ID, IdentityVersion: 2,
+			Type: "profile.updated", Payload: `{"locale":"ja","locale_source":"browser"}`, NextAttemptAt: now,
+		},
+		{
+			ID: "locale-event-browser-repair", CreatedAt: now, UserID: users[3].ID, IdentityVersion: 2,
+			Type: "profile.updated", Payload: `{"locale":"fr","locale_source":"browser"}`, NextAttemptAt: now,
+		},
+		{
+			ID: "locale-event-browser-later-choice", CreatedAt: now, UserID: users[4].ID, IdentityVersion: 2,
+			Type: "profile.updated", Payload: `{"locale":"fr","locale_source":"browser"}`, NextAttemptAt: now,
+		},
+	}
+	if err := db.Create(&events).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&AuditEvent{CreatedAt: now.Add(time.Second), UserID: users[1].ID, Action: "profile.updated"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&AuditEvent{CreatedAt: now.Add(time.Second), UserID: users[3].ID, Action: "profile.locale_initialized", Metadata: "source=browser"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&AuditEvent{CreatedAt: now.Add(time.Second), UserID: users[4].ID, Action: "profile.locale_initialized", Metadata: "source=browser"}).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Create(&LifecycleEvent{
-		ID: "locale-event", CreatedAt: now, UserID: users[1].ID, IdentityVersion: 2,
-		Type: "profile.updated", Payload: `{"locale":"zhCN"}`, NextAttemptAt: now,
+		ID: "locale-event-later-choice", CreatedAt: now.Add(2 * time.Second), UserID: users[4].ID, IdentityVersion: 3,
+		Type: "profile.updated", Payload: `{"locale":"en","locale_source":"user"}`, NextAttemptAt: now.Add(2 * time.Second),
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -145,10 +181,10 @@ func TestMigrateLocaleSourcesUsesOnlyExplicitLifecycleEvents(t *testing.T) {
 	if err := db.Order("id ASC").Find(&reloaded).Error; err != nil {
 		t.Fatal(err)
 	}
-	if reloaded[0].LocaleSource != LocaleSourceUnknown || reloaded[1].LocaleSource != LocaleSourceUser || reloaded[2].LocaleSource != LocaleSourceUnknown {
+	if reloaded[0].LocaleSource != LocaleSourceUnknown || reloaded[1].LocaleSource != LocaleSourceUser || reloaded[2].LocaleSource != LocaleSourceBrowser || reloaded[3].LocaleSource != LocaleSourceBrowser || reloaded[4].LocaleSource != LocaleSourceUser || reloaded[5].LocaleSource != LocaleSourceUnknown {
 		t.Fatalf("unexpected locale sources after migration: %#v", reloaded)
 	}
-	if reloaded[0].Locale != "en" || reloaded[1].Locale != "zhCN" || reloaded[2].Locale != "ja" {
+	if reloaded[0].Locale != "en" || reloaded[1].Locale != "zhCN" || reloaded[2].Locale != "ja" || reloaded[3].Locale != "fr" || reloaded[4].Locale != "fr" || reloaded[5].Locale != "ja" {
 		t.Fatalf("migration rewrote existing locale values: %#v", reloaded)
 	}
 }

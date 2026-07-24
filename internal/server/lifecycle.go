@@ -41,6 +41,9 @@ func (s *Server) recordLifecycleEvent(tx *gorm.DB, userID uint64, eventType stri
 		"role":             user.Role,
 		"locale":           projectedLocale(&user),
 	}
+	if eventType == "profile.updated" {
+		payload["locale_source"] = user.LocaleSource
+	}
 	if user.MergedIntoUserID != nil {
 		payload["canonical_sub"] = strconv.FormatUint(*user.MergedIntoUserID, 10)
 	}

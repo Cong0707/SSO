@@ -406,22 +406,54 @@ func migrateLocaleSources(db *gorm.DB) error {
 			Update("locale_source", LocaleSourceUnknown).Error; err != nil {
 			return err
 		}
-		if !tx.Migrator().HasTable(&IdentityMigrationMapping{}) || !tx.Migrator().HasTable(&LifecycleEvent{}) {
+		hasLifecycleEvents := tx.Migrator().HasTable(&LifecycleEvent{})
+		hasAuditEvents := tx.Migrator().HasTable(&AuditEvent{})
+		if hasLifecycleEvents && hasAuditEvents {
+			// A previous v4 run could see the lifecycle event emitted by browser
+			// initialization and incorrectly promote that account to "user".
+			// The browser initialization audit is written after its lifecycle event;
+			// only restore the source when no later locale lifecycle event exists.
+			if err := tx.Exec(`
+				UPDATE users
+				SET locale_source = ?
+				WHERE locale_source = ?
+				  AND EXISTS (
+					SELECT 1
+					FROM audit_events AS ai
+					WHERE ai.user_id = users.id
+					  AND ai.action = ?
+					  AND ai.metadata = ?
+					  AND NOT EXISTS (
+						SELECT 1
+						FROM lifecycle_events AS later
+						WHERE later.user_id = users.id
+						  AND later.type = ?
+						  AND later.created_at > ai.created_at
+					  )
+				  )
+			`, LocaleSourceBrowser, LocaleSourceUser, "profile.locale_initialized", "source=browser", "profile.updated").Error; err != nil {
+				return err
+			}
+		}
+		if !tx.Migrator().HasTable(&IdentityMigrationMapping{}) || !hasLifecycleEvents {
 			return nil
 		}
 
-		// Only a locale lifecycle event made after the mapping was created can
-		// establish that a migrated account actively chose a language.
+		// Only a locale lifecycle event carrying an explicit user source can
+		// establish that a migrated account actively chose a language. Browser
+		// initialization also emits profile.updated for downstream synchronization,
+		// so an event without source evidence is intentionally not inferred.
 		var explicitUserIDs []uint64
 		if err := tx.Table("lifecycle_events AS e").
 			Select("DISTINCT e.user_id").
 			Joins("JOIN identity_migration_mappings AS m ON m.sso_user_id = e.user_id AND m.source_system = ?", "new-api").
-			Where("e.type = ? AND e.created_at >= m.created_at", "profile.updated").
+			Where("e.type = ? AND e.created_at >= m.created_at AND e.payload LIKE ?", "profile.updated", `%"locale_source":"user"%`).
 			Pluck("e.user_id", &explicitUserIDs).Error; err != nil {
 			return err
 		}
 		if len(explicitUserIDs) > 0 {
-			if err := tx.Model(&User{}).Where("id IN ?", explicitUserIDs).
+			if err := tx.Model(&User{}).
+				Where("id IN ? AND locale_source = ?", explicitUserIDs, LocaleSourceUnknown).
 				Update("locale_source", LocaleSourceUser).Error; err != nil {
 				return err
 			}

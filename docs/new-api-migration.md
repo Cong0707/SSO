@@ -25,6 +25,7 @@ new-api 接入 SSO 后仍负责建立自己的业务 Session、权限判断、�
 - `github_id`、`discord_id`、`oidc_id`、`linux_do_id`、`telegram_id`、`wechat_id`：写入平等的 `upstream_identities`。OIDC 必须显式提供 issuer，不能只凭数字 subject 判断全局唯一。
 - `status`、软删除：启用映射为 `active`，其它状态或 `deleted_at` 非空映射为 `deactivated`。注销数据保留，不能重新登录。
 - `role`：new-api 的 1/10/100 仍由 new-api 保存。SSO 只有在 `SSO_BOOTSTRAP_ADMIN_EMAILS` 明确列出已验证邮箱时才授予 `admin`，不会把 100 自动提升成 SSO 管理员。
+- `sso_locale`：只有源值明确受支持时才标记为 `imported`。缺失或不支持的源值保留为 `locale_source=unknown`，OIDC/UserInfo 和 new-api 投影均为空；下次认证时再根据该次浏览器 `Accept-Language` 初始化一次并标记为 `browser`。个人资料页的明确选择标记为 `user`，两类生命周期事件携带来源供迁移和审计区分。不得把未知账号批量改为中文或英文。
 - `AccessToken`：不导入 SSO PAT。它继续属于 new-api 业务 Token，迁移工具不会读取该列。
 - Passkey、TOTP、备用码：格式和密钥保护不同，工具只生成需重新注册的警告，不复制密钥或备用码。
 

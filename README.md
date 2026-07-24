@@ -149,3 +149,5 @@ type Provider interface {
 字段映射、密码兼容策略、第三方身份绑定和迁移顺序见 [`docs/new-api-migration.md`](docs/new-api-migration.md)。当前登录器兼容 new-api 使用的 bcrypt 哈希，用户首次登录成功后会自动升级为 Argon2id。
 
 迁移边界是身份接管，不是业务用户表替换。new-api 仍保留本地用户 ID、角色、分组、额度、钱包、订阅、支付、API Token、日志和业务 Session；SSO 接管密码、邮箱、第三方绑定、头像、MFA、账号合并和全局身份状态。new-api 应通过 OIDC `sub` 建立本地业务用户映射，并把个人信息管理入口跳转到 SSO。
+
+语言偏好同时记录 `locale` 和 `locale_source`。存量账号没有可靠选择证据时使用 `unknown`，不会把数据库兼容回退值投影到 OIDC 或业务系统；账号下次登录、授权或访问 SSO 时，仅在浏览器 `Accept-Language` 能匹配受支持语言的情况下初始化一次。之后浏览器语言变化不会覆盖账号偏好，个人资料页的手动选择始终具有最高优先级。语言生命周期事件会携带来源，迁移任务不会把浏览器初始化误判为用户手动选择。
