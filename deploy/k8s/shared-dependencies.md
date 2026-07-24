@@ -10,7 +10,9 @@ SSO 使用独立的 `sso` namespace 和独立的应用、Secret、Service、Netw
 - Redis：`redis-primary.new-api.svc.cluster.local:6379`
 - Redis 隔离：使用独立键前缀 `xem-sso`；当前 Redis 认证密码与 new-api 共用，不在应用代码中复用 new-api Secret
 - HTTP 入口：沿用每个节点上的 Nginx；Nginx 将 `user.xem8k5.top` 转发到 `sso.sso.svc.cluster.local:80`
-- DNS：沿用现有 SuperDNS/PowerDNS 调度，不为 SSO 增加独立负载均衡器
+- 后端 OAuth 入口：`user.k8s.xem8k5.top` 仅直通 Token、UserInfo、JWKS、Discovery 和健康检查；其他路径跳转到公开身份域名
+- DNS：`user.k8s.xem8k5.top` 复用现有 PowerDNS 地域权重与健康摘除，不增加独立负载均衡器
+- 生命周期 Webhook：SSO 使用 `newapi.k8s.xem8k5.top` 回调 new-api，不绕行 Cloudflare 业务域名
 
 ## Secret 同步边界
 
@@ -29,4 +31,3 @@ SSO 使用独立的 `sso` namespace 和独立的应用、Secret、Service、Netw
 - `sso-postgres.yaml`
 - `sso-redis.yaml`
 - SSO 专用 HAProxy
-

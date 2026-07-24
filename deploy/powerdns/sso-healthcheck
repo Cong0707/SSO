@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly ZONE="${PDNS_ZONE:-k8s.xem8k5.top}"
+readonly RECORD="${PDNS_RECORD:-user.k8s.xem8k5.top}"
+readonly TTL="${PDNS_TTL:-30}"
+readonly KUBECONFIG_PATH="${KUBECONFIG:-/etc/kubernetes/admin.conf}"
+readonly NAMESPACE="${PDNS_NAMESPACE:-sso}"
+readonly POD_LABEL="${PDNS_POD_LABEL:-app.kubernetes.io/name=sso}"
+readonly BWG_NODE="${PDNS_BWG_NODE:-cool-bliss-1.localdomain}"
+readonly BWG_IP="${PDNS_BWG_IP:-95.169.7.75}"
+readonly OVH_NODE="${PDNS_OVH_NODE:-ovh-1}"
+readonly OVH_IP="${PDNS_OVH_IP:-51.81.242.220}"
+readonly CHECK_INTERVAL="${PDNS_CHECK_INTERVAL:-2}"
+readonly FAILURE_THRESHOLD="${PDNS_FAILURE_THRESHOLD:-3}"
+readonly RECOVERY_THRESHOLD="${PDNS_RECOVERY_THRESHOLD:-2}"
+readonly CN_BWG_WEIGHT="${PDNS_CN_BWG_WEIGHT:-9}"
+readonly CN_OVH_WEIGHT="${PDNS_CN_OVH_WEIGHT:-1}"
+readonly DEFAULT_BWG_WEIGHT="${PDNS_DEFAULT_BWG_WEIGHT:-4}"
+readonly DEFAULT_OVH_WEIGHT="${PDNS_DEFAULT_OVH_WEIGHT:-1}"
+readonly STATE_FILE="${PDNS_STATE_FILE:-/run/sso-pdns-healthcheck.state}"
+readonly LOCK_FILE="${PDNS_LOCK_FILE:-/run/sso-pdns-healthcheck.lock}"
+
+bwg_up=1
+bwg_fail=0
+bwg_success=0
+ovh_up=1
+ovh_fail=0
+ovh_success=0
+last_mode=""
+
+if [[ -r "${STATE_FILE}" ]]; then
+  source "${STATE_FILE}"
+fi
+
+exec 9>"${LOCK_FILE}"
+flock -n 9 || exit 0
+
+pod_ready() {
+  local node="$1"
+  kubectl --kubeconfig "${KUBECONFIG_PATH}" --request-timeout=3s \
+    -n "${NAMESPACE}" get pods -l "${POD_LABEL}" \
+    --field-selector "spec.nodeName=${node}" \
+    -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' \
+    2>/dev/null | grep -qx 'True'
+}
+
+port_ready() {
+  local ip="$1"
+  timeout 3 bash -c "</dev/tcp/${ip}/443" 2>/dev/null
+}
+
+probe() {
+  local node="$1"
+  local ip="$2"
+  pod_ready "${node}" && port_ready "${ip}"
+}
+
+weighted_names() {
+  local bwg_count="$1"
+  local ovh_count="$2"
+  local values=""
+  local index
+  for ((index = 0; index < bwg_count; index++)); do values+="${values:+,}b"; done
+  for ((index = 0; index < ovh_count; index++)); do values+="${values:+,}o"; done
+  printf '%s' "${values}"
+}
+
+update_health() {
+  local prefix="$1"
+  local node="$2"
+  local ip="$3"
+  local -n up="${prefix}_up"
+  local -n failures="${prefix}_fail"
+  local -n successes="${prefix}_success"
+
+  if probe "${node}" "${ip}"; then
+    failures=0
+    successes=$((successes + 1))
+    if (( successes >= RECOVERY_THRESHOLD )); then up=1; fi
+  else
+    successes=0
+    failures=$((failures + 1))
+    if (( failures >= FAILURE_THRESHOLD )); then up=0; fi
+  fi
+}
+
+write_record() {
+  local mode="$1"
+  case "${mode}" in
+    both)
+      local cn_values default_values
+      cn_values="$(weighted_names "${CN_BWG_WEIGHT}" "${CN_OVH_WEIGHT}")"
+      default_values="$(weighted_names "${DEFAULT_BWG_WEIGHT}" "${DEFAULT_OVH_WEIGHT}")"
+      pdnsutil rrset delete "${ZONE}" "${RECORD}" A >/dev/null 2>&1 || true
+      pdnsutil rrset replace "${ZONE}" "${RECORD}" LUA "${TTL}" \
+        "A \";local b='${BWG_IP}';local o='${OVH_IP}';if country('CN') then return pickrandom({${cn_values}}) else return pickrandom({${default_values}}) end\"" >/dev/null
+      ;;
+    bwg)
+      pdnsutil rrset delete "${ZONE}" "${RECORD}" LUA >/dev/null 2>&1 || true
+      pdnsutil rrset replace "${ZONE}" "${RECORD}" A "${TTL}" "${BWG_IP}" >/dev/null
+      ;;
+    ovh)
+      pdnsutil rrset delete "${ZONE}" "${RECORD}" LUA >/dev/null 2>&1 || true
+      pdnsutil rrset replace "${ZONE}" "${RECORD}" A "${TTL}" "${OVH_IP}" >/dev/null
+      ;;
+    *) return 1 ;;
+  esac
+  pdnsutil zone increase-serial "${ZONE}" >/dev/null
+  pdns_control notify "${ZONE}" >/dev/null 2>&1 || true
+  logger -t sso-pdns-healthcheck "updated ${RECORD}: mode=${mode} bwg=${bwg_up} ovh=${ovh_up}"
+}
+
+save_state() {
+  local temp
+  temp="$(mktemp /run/sso-pdns-healthcheck.state.XXXXXX)"
+  {
+    printf 'bwg_up=%q\n' "${bwg_up}"
+    printf 'bwg_fail=%q\n' "${bwg_fail}"
+    printf 'bwg_success=%q\n' "${bwg_success}"
+    printf 'ovh_up=%q\n' "${ovh_up}"
+    printf 'ovh_fail=%q\n' "${ovh_fail}"
+    printf 'ovh_success=%q\n' "${ovh_success}"
+    printf 'last_mode=%q\n' "${last_mode}"
+  } >"${temp}"
+  chmod 0600 "${temp}"
+  mv -f "${temp}" "${STATE_FILE}"
+}
+
+while true; do
+  update_health bwg "${BWG_NODE}" "${BWG_IP}"
+  update_health ovh "${OVH_NODE}" "${OVH_IP}"
+  mode=none
+  if (( bwg_up == 1 && ovh_up == 1 )); then mode=both
+  elif (( bwg_up == 1 )); then mode=bwg
+  elif (( ovh_up == 1 )); then mode=ovh
+  fi
+  if [[ "${mode}" != none && "${mode}" != "${last_mode}" ]]; then
+    if write_record "${mode}"; then last_mode="${mode}"; fi
+  elif [[ "${mode}" == none ]]; then
+    logger -t sso-pdns-healthcheck "all endpoints are unhealthy; keeping the last published record"
+  fi
+  save_state
+  sleep "${CHECK_INTERVAL}"
+done

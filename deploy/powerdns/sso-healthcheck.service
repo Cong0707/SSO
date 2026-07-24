@@ -1,0 +1,22 @@
+[Unit]
+Description=SSO PowerDNS health-based record controller
+After=network-online.target pdns.service kubelet.service
+Wants=network-online.target
+Requires=pdns.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/sso-healthcheck
+Restart=always
+RestartSec=2s
+Nice=5
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/powerdns /run
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

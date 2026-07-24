@@ -16,7 +16,7 @@ data:
   SSO_SESSION_TTL: "720h"
   SSO_REGISTRATION_ENABLED: "false"
   SSO_AUTO_MIGRATE: "false"
-  SSO_LIFECYCLE_WEBHOOK_URL: "https://ai.xem8k5.top/api/sso/lifecycle"
+  SSO_LIFECYCLE_WEBHOOK_URL: "https://newapi.k8s.xem8k5.top/api/sso/lifecycle"
   SSO_OUTBOX_POLL_INTERVAL: "500ms"
   SSO_EMAIL_DEBUG: "false"
   SSO_SMTP_PORT: "587"
