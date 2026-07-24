@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
+import capWasmURL from "@cap.js/wasm/browser/cap_wasm_bg.wasm?url";
 
 declare global {
   interface Window {
+    CAP_CUSTOM_WASM_URL?: string;
     turnstile?: {
       render: (
         element: HTMLElement,
@@ -103,6 +105,7 @@ function CapWidget(props: {
     const solved = (event: Event) =>
       verifyRef.current((event as CustomEvent<{ token: string }>).detail.token);
     const reset = () => expireRef.current();
+    window.CAP_CUSTOM_WASM_URL = capWasmURL;
     void import("@cap.js/widget").then(() => {
       if (cancelled) return;
       widget = document.createElement("cap-widget");
