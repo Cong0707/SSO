@@ -46,8 +46,8 @@ spec:
         fsGroup: 10001
       containers:
         - name: sso
-          image: ghcr.io/cong0707/sso:0.1.0@sha256:0000000000000000000000000000000000000000000000000000000000000000
-          imagePullPolicy: Always
+          image: docker.io/library/sso:git-b655eb6
+          imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
                 name: sso-config
