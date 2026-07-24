@@ -15,6 +15,15 @@ type Translation = Record<LocaleCode, string>;
 
 const resources = translations as Record<string, Translation>;
 const dynamicResources: Record<string, Translation> = {
+  "跟随浏览器（尚未保存）": {
+    zhCN: "跟随浏览器（尚未保存）",
+    en: "Use browser language (not saved)",
+    fr: "Utiliser la langue du navigateur (non enregistrée)",
+    ru: "Использовать язык браузера (не сохранено)",
+    ja: "ブラウザーの言語を使用（未保存）",
+    vi: "Dùng ngôn ngữ trình duyệt (chưa lưu)",
+    zhTW: "跟隨瀏覽器（尚未儲存）",
+  },
   "邮箱或用户名": {
     zhCN: "邮箱或用户名",
     en: "Email or username",

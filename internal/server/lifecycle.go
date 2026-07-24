@@ -26,7 +26,7 @@ func (s *Server) recordLifecycleEvent(tx *gorm.DB, userID uint64, eventType stri
 		return fmt.Errorf("increment identity version: %w", result.Error)
 	}
 	var user model.User
-	if err := tx.Select("id", "status", "role", "locale", "identity_version", "merged_into_user_id").First(&user, userID).Error; err != nil {
+	if err := tx.Select("id", "status", "role", "locale", "locale_source", "identity_version", "merged_into_user_id").First(&user, userID).Error; err != nil {
 		return err
 	}
 	now := time.Now().UTC()
@@ -39,7 +39,7 @@ func (s *Server) recordLifecycleEvent(tx *gorm.DB, userID uint64, eventType stri
 		"identity_version": user.IdentityVersion,
 		"status":           user.Status,
 		"role":             user.Role,
-		"locale":           user.Locale,
+		"locale":           projectedLocale(&user),
 	}
 	if user.MergedIntoUserID != nil {
 		payload["canonical_sub"] = strconv.FormatUint(*user.MergedIntoUserID, 10)

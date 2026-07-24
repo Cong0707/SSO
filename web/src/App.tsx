@@ -203,14 +203,14 @@ export function App() {
       .then((data) => {
         setUser(data.user);
         setCsrf(data.csrf_token);
-        i18n.changeLocale(data.user.locale);
+        if (data.user.locale) i18n.changeLocale(data.user.locale);
       })
       .catch(() => setUser(null))
       .finally(() => setChecking(false));
   }, [i18n.changeLocale, location.pathname]);
   const acceptUser = async (nextUser: User) => {
     setUser(nextUser);
-    i18n.changeLocale(nextUser.locale);
+    if (nextUser.locale) i18n.changeLocale(nextUser.locale);
   };
   const changeLocale = async (value: string): Promise<LocaleCode> => {
     const previousLocale = i18n.locale;
@@ -2506,6 +2506,11 @@ function ProfilePage({
                     void changeProfileLocale(event.target.value)
                   }
                 >
+                  {!profile.locale && (
+                    <option value="" disabled>
+                      {tr("跟随浏览器（尚未保存）")}
+                    </option>
+                  )}
                   {LANGUAGE_OPTIONS.map((language) => (
                     <option key={language.code} value={language.code}>
                       {language.label}

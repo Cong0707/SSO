@@ -10,18 +10,28 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const CurrentSchemaVersion uint64 = 3
+const CurrentSchemaVersion uint64 = 4
+
+const (
+	LocaleSourceUnknown  = "unknown"
+	LocaleSourceImported = "imported"
+	LocaleSourceBrowser  = "browser"
+	LocaleSourceUser     = "user"
+)
 
 type User struct {
-	ID                   uint64     `gorm:"primaryKey" json:"id"`
-	CreatedAt            time.Time  `json:"created_at"`
-	UpdatedAt            time.Time  `json:"updated_at"`
-	Username             string     `gorm:"size:64;uniqueIndex;not null" json:"username"`
-	PasswordHash         string     `gorm:"size:512;not null" json:"-"`
-	PasswordConfigured   bool       `gorm:"not null;default:true" json:"password_configured"`
-	DisplayName          string     `gorm:"size:100" json:"display_name"`
-	AvatarURL            string     `gorm:"size:1024" json:"avatar_url"`
-	Locale               string     `gorm:"size:12;not null" json:"locale"`
+	ID                 uint64    `gorm:"primaryKey" json:"id"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	Username           string    `gorm:"size:64;uniqueIndex;not null" json:"username"`
+	PasswordHash       string    `gorm:"size:512;not null" json:"-"`
+	PasswordConfigured bool      `gorm:"not null;default:true" json:"password_configured"`
+	DisplayName        string    `gorm:"size:100" json:"display_name"`
+	AvatarURL          string    `gorm:"size:1024" json:"avatar_url"`
+	Locale             string    `gorm:"size:12;not null" json:"locale"`
+	// LocaleSource distinguishes a deliberate preference from the temporary
+	// fallback retained for legacy users whose language was never known.
+	LocaleSource         string     `gorm:"size:16;not null;default:unknown" json:"-"`
 	MFAEnabled           bool       `gorm:"not null" json:"mfa_enabled"`
 	MFASecretEncrypted   string     `gorm:"type:text" json:"-"`
 	MFABackupCodeHashes  string     `gorm:"type:text" json:"-"`
@@ -369,6 +379,9 @@ func Migrate(db *gorm.DB) error {
 	if err := migrateLegacyBackupCodes(db); err != nil {
 		return err
 	}
+	if err := migrateLocaleSources(db); err != nil {
+		return err
+	}
 	return db.Transaction(func(tx *gorm.DB) error {
 		var migration SchemaMigration
 		err := tx.Where("version = ?", CurrentSchemaVersion).First(&migration).Error
@@ -376,6 +389,44 @@ func Migrate(db *gorm.DB) error {
 			return tx.Create(&SchemaMigration{Version: CurrentSchemaVersion, AppliedAt: time.Now().UTC()}).Error
 		}
 		return err
+	})
+}
+
+// migrateLocaleSources keeps the historical locale value available as a
+// fallback but explicitly marks migrated accounts with no trustworthy locale
+// as unknown. A locale lifecycle event after the migration is treated as an explicit
+// user choice; it is never inferred from the deployment's default language.
+func migrateLocaleSources(db *gorm.DB) error {
+	if !db.Migrator().HasColumn(&User{}, "locale_source") {
+		return errors.New("locale_source column is missing")
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&User{}).
+			Where("locale_source IS NULL OR locale_source NOT IN ?", []string{LocaleSourceUnknown, LocaleSourceImported, LocaleSourceBrowser, LocaleSourceUser}).
+			Update("locale_source", LocaleSourceUnknown).Error; err != nil {
+			return err
+		}
+		if !tx.Migrator().HasTable(&IdentityMigrationMapping{}) || !tx.Migrator().HasTable(&LifecycleEvent{}) {
+			return nil
+		}
+
+		// Only a locale lifecycle event made after the mapping was created can
+		// establish that a migrated account actively chose a language.
+		var explicitUserIDs []uint64
+		if err := tx.Table("lifecycle_events AS e").
+			Select("DISTINCT e.user_id").
+			Joins("JOIN identity_migration_mappings AS m ON m.sso_user_id = e.user_id AND m.source_system = ?", "new-api").
+			Where("e.type = ? AND e.created_at >= m.created_at", "profile.updated").
+			Pluck("e.user_id", &explicitUserIDs).Error; err != nil {
+			return err
+		}
+		if len(explicitUserIDs) > 0 {
+			if err := tx.Model(&User{}).Where("id IN ?", explicitUserIDs).
+				Update("locale_source", LocaleSourceUser).Error; err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 

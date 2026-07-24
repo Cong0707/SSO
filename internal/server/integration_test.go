@@ -59,7 +59,7 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 	}
 	client := &http.Client{Jar: jar, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 
-	identified := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/auth/identify", "", map[string]any{"email": "alice@example.com", "locale": "ja"})
+	identified := doJSONWithHeaders(t, client, http.MethodPost, httpServer.URL+"/api/auth/identify", "", map[string]any{"email": "alice@example.com", "locale": "fr"}, map[string]string{"Accept-Language": "ja-JP,ja;q=0.9,en;q=0.5"})
 	flowToken := nestedString(t, identified, "data", "flow_token")
 	prepared := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/auth/register/prepare", "", map[string]any{"flow_token": flowToken, "username": "alice", "password": "Password123", "confirm_password": "Password123"})
 	verificationCode := nestedString(t, prepared, "data", "debug_code")
@@ -72,7 +72,7 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 	if err := db.Where("username = ?", "alice").First(&registeredUser).Error; err != nil || registeredUser.Role != "admin" {
 		t.Fatalf("configured bootstrap email must receive admin access: user=%#v err=%v", registeredUser, err)
 	}
-	if registeredUser.Locale != "ja" {
+	if registeredUser.Locale != "ja" || registeredUser.LocaleSource != model.LocaleSourceBrowser {
 		t.Fatalf("registration did not persist the detected locale: %#v", registeredUser)
 	}
 	var registeredEmail model.UserEmail
@@ -105,6 +105,9 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 		t.Fatalf("profile update accepted a client-controlled avatar URL: %#v", updated)
 	}
 	var profileAfterUpdate model.User
+	if err := db.First(&profileAfterUpdate, registeredUser.ID).Error; err != nil || profileAfterUpdate.LocaleSource != model.LocaleSourceUser {
+		t.Fatalf("explicit profile choice was not marked as user-owned: user=%#v err=%v", profileAfterUpdate, err)
+	}
 	if err := db.First(&profileAfterUpdate, registeredUser.ID).Error; err != nil || profileAfterUpdate.AvatarURL != "" {
 		t.Fatalf("profile update changed stored avatar URL: user=%#v err=%v", profileAfterUpdate, err)
 	}
@@ -221,12 +224,27 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 }
 
 func doJSON(t *testing.T, client *http.Client, method, endpoint, csrf string, body any) map[string]any {
+	return doJSONWithHeaders(t, client, method, endpoint, csrf, body, nil)
+}
+
+func doJSONWithHeaders(t *testing.T, client *http.Client, method, endpoint, csrf string, body any, headers map[string]string) map[string]any {
 	t.Helper()
 	encoded, err := json.Marshal(body)
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)
 	}
-	response := doRequest(t, client, method, endpoint, csrf, bytes.NewReader(encoded), "application/json")
+	request, err := http.NewRequest(method, endpoint, bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if csrf != "" {
+		request.Header.Set("X-CSRF-Token", csrf)
+	}
+	for key, value := range headers {
+		request.Header.Set(key, value)
+	}
+	response := doRawRequest(t, client, request)
 	defer response.Body.Close()
 	data, err := io.ReadAll(response.Body)
 	if err != nil {

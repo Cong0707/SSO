@@ -292,6 +292,10 @@ func (s *Server) currentUser(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
 		return
 	}
+	if _, err := s.initializeUnknownLocale(c, user, ""); err != nil {
+		s.serveError(c, http.StatusInternalServerError, "初始化语言偏好失败")
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"user": publicUser(user), "csrf_token": session.CSRFToken}})
 }
 
@@ -444,7 +448,7 @@ func (s *Server) revokeCurrentSession(c *gin.Context) {
 func (s *Server) user(c *gin.Context) *model.User       { return c.MustGet("user").(*model.User) }
 func (s *Server) session(c *gin.Context) *model.Session { return c.MustGet("session").(*model.Session) }
 func publicUser(user *model.User) gin.H {
-	return gin.H{"id": user.ID, "username": user.Username, "display_name": user.DisplayName, "avatar_url": user.AvatarURL, "locale": user.Locale, "mfa_enabled": user.MFAEnabled, "password_configured": user.PasswordConfigured, "role": user.Role, "status": user.Status, "security_email_enabled": user.SecurityEmailEnabled, "created_at": user.CreatedAt, "last_login_at": user.LastLoginAt}
+	return gin.H{"id": user.ID, "username": user.Username, "display_name": user.DisplayName, "avatar_url": user.AvatarURL, "locale": projectedLocale(user), "mfa_enabled": user.MFAEnabled, "password_configured": user.PasswordConfigured, "role": user.Role, "status": user.Status, "security_email_enabled": user.SecurityEmailEnabled, "created_at": user.CreatedAt, "last_login_at": user.LastLoginAt}
 }
 
 func (s *Server) isBootstrapAdminEmail(email string) bool {

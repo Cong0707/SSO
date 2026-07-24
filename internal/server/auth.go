@@ -100,7 +100,7 @@ func (s *Server) identify(c *gin.Context) {
 	}
 	raw, flow, err := s.createAuthFlow(model.AuthFlow{
 		Purpose: "identify_" + mode, Identifier: trimmedIdentifier, Email: email, Username: username,
-		Locale: requestLocale(input.Locale, c.GetHeader("Accept-Language")), UserID: userID,
+		Locale: browserLocale(c.GetHeader("Accept-Language")), UserID: userID,
 		SourceUserID: sourceUserID, SessionID: sourceSessionID, ExpiresAt: time.Now().Add(10 * time.Minute),
 	})
 	if err != nil {
@@ -222,9 +222,11 @@ func (s *Server) registerComplete(c *gin.Context) {
 		if s.isBootstrapAdminEmail(flow.Email) {
 			role = "admin"
 		}
+		locale, localeSource := storedBrowserLocale(flow.Locale)
 		user = model.User{
 			Username: flow.Username, PasswordHash: flow.PasswordHash,
-			PasswordConfigured: true, DisplayName: flow.Username, Locale: requestLocale(flow.Locale, ""),
+			PasswordConfigured: true, DisplayName: flow.Username, Locale: locale,
+			LocaleSource:         localeSource,
 			SecurityEmailEnabled: true, Role: role, Status: "active",
 		}
 		if err := tx.Create(&user).Error; err != nil {
@@ -353,6 +355,10 @@ func (s *Server) finishPasswordLogin(c *gin.Context, flow *model.AuthFlow, user 
 			user = &target
 			merged = true
 		}
+	}
+	if _, err := s.initializeUnknownLocale(c, user, flow.Locale); err != nil {
+		s.serveError(c, http.StatusInternalServerError, "初始化语言偏好失败")
+		return
 	}
 	user.LastLoginAt = &now
 	_ = s.DB.Model(user).Update("last_login_at", &now).Error

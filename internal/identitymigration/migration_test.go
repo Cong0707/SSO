@@ -13,18 +13,22 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestMigratedLocaleUsesSourcePreferenceAndChineseFallback(t *testing.T) {
-	tests := map[string]string{
-		"":        "zhCN",
-		"unknown": "zhCN",
-		"zh-CN":   "zhCN",
-		"zh_Hant": "zhTW",
-		"en-US":   "en",
-		"fr":      "fr",
+func TestMigratedLocalePreservesKnownPreferenceAndMarksUnknown(t *testing.T) {
+	tests := map[string]struct {
+		locale string
+		source string
+	}{
+		"":        {"en", model.LocaleSourceUnknown},
+		"unknown": {"en", model.LocaleSourceUnknown},
+		"zh-CN":   {"zhCN", model.LocaleSourceImported},
+		"zh_Hant": {"zhTW", model.LocaleSourceImported},
+		"en-US":   {"en", model.LocaleSourceImported},
+		"fr":      {"fr", model.LocaleSourceImported},
 	}
 	for input, expected := range tests {
-		if actual := migratedLocale(input); actual != expected {
-			t.Fatalf("migratedLocale(%q) = %q, want %q", input, actual, expected)
+		locale, source := migratedLocale(input)
+		if locale != expected.locale || source != expected.source {
+			t.Fatalf("migratedLocale(%q) = (%q, %q), want (%q, %q)", input, locale, source, expected.locale, expected.source)
 		}
 	}
 }

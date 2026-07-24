@@ -86,6 +86,10 @@ func (s *Server) oauthAuthorize(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/login?redirect="+url.QueryEscape(r.URL.String()))
 		return
 	}
+	if _, err := s.initializeUnknownLocale(c, user, ""); err != nil {
+		s.serveError(c, http.StatusInternalServerError, "初始化语言偏好失败")
+		return
+	}
 	promptConsent := r.URL.Query().Get("prompt") == "consent"
 	var grant model.Grant
 	grantErr := s.DB.Where("user_id = ? AND app_id = ? AND revoked_at IS NULL", user.ID, app.ID).Limit(1).Find(&grant).Error
@@ -380,7 +384,9 @@ func (s *Server) oauthUserInfo(c *gin.Context) {
 		claims["name"] = user.DisplayName
 		claims["preferred_username"] = user.Username
 		claims["picture"] = user.AvatarURL
-		claims["locale"] = user.Locale
+		if locale := projectedLocale(&user); locale != "" {
+			claims["locale"] = locale
+		}
 	}
 	if allowed["email"] {
 		for key, value := range s.emailClaims(user.ID) {

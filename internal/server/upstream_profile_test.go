@@ -35,7 +35,7 @@ func TestProvisionUpstreamUserImportsProfileAndAllowsLaterUserEdits(t *testing.T
 	if user.Username != "octocat" || user.DisplayName != "The Octocat" || user.AvatarURL == "" {
 		t.Fatalf("profile was not imported: %#v", user)
 	}
-	if user.Locale != "vi" {
+	if user.Locale != "vi" || user.LocaleSource != model.LocaleSourceBrowser {
 		t.Fatalf("upstream registration did not persist the detected locale: %#v", user)
 	}
 	var importedEmail model.UserEmail
@@ -76,6 +76,9 @@ func TestSyncUpstreamProfileAddsVerifiedEmailBinding(t *testing.T) {
 	}
 	if user.Role != "user" {
 		t.Fatalf("an unconfigured first upstream user was promoted to admin: %#v", user)
+	}
+	if user.LocaleSource != model.LocaleSourceUnknown || projectedLocale(&user) != "" {
+		t.Fatalf("upstream account without language evidence was not kept unknown: %#v", user)
 	}
 	if err := application.syncUpstreamProfile(&user, upstream.Identity{Subject: "100", Email: "verified@example.com", EmailVerified: true}); err != nil {
 		t.Fatalf("sync verified email: %v", err)

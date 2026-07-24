@@ -50,13 +50,17 @@ func (s *Server) telegramLogin(c *gin.Context) {
 		s.serveError(c, http.StatusUnauthorized, "Telegram 登录数据无效")
 		return
 	}
-	user, err := s.resolveUpstreamUser(provider, identity, requestLocale(input.Locale, c.GetHeader("Accept-Language")))
+	user, err := s.resolveUpstreamUser(provider, identity, browserLocale(c.GetHeader("Accept-Language")))
 	if err != nil {
 		s.serveError(c, http.StatusConflict, err.Error())
 		return
 	}
 	if user.Status != "active" {
 		s.serveError(c, http.StatusForbidden, "账号不可用")
+		return
+	}
+	if _, err := s.initializeUnknownLocale(c, &user, ""); err != nil {
+		s.serveError(c, http.StatusInternalServerError, "初始化语言偏好失败")
 		return
 	}
 	if input.MergeToken != "" {

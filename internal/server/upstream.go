@@ -197,7 +197,7 @@ func (s *Server) upstreamStart(c *gin.Context) {
 	stateRecord := model.UpstreamOAuthState{
 		ProviderID: providerRecord.ID, SessionID: sessionID, MergeFlowID: mergeFlowID, TokenHash: security.HashToken(state),
 		BrowserNonceHash:      security.HashToken(browserNonce),
-		CodeVerifierEncrypted: encryptedVerifier, Locale: requestLocale(c.Query("locale"), c.GetHeader("Accept-Language")),
+		CodeVerifierEncrypted: encryptedVerifier, Locale: browserLocale(c.GetHeader("Accept-Language")),
 		ReturnTo: safeReturnTo(c.Query("return_to")), ExpiresAt: time.Now().Add(10 * time.Minute),
 	}
 	if err := s.DB.Create(&stateRecord).Error; err != nil {
@@ -281,6 +281,10 @@ func (s *Server) upstreamCallback(c *gin.Context) {
 	}
 	if user.ID == 0 || user.Status != "active" {
 		c.Redirect(http.StatusFound, "/login?oauth_error=account_unavailable")
+		return
+	}
+	if _, err := s.initializeUnknownLocale(c, &user, state.Locale); err != nil {
+		c.Redirect(http.StatusFound, "/login?oauth_error=locale_initialization_failed")
 		return
 	}
 	var conflict model.UpstreamIdentity
@@ -404,9 +408,11 @@ func (s *Server) provisionUpstreamUser(provider model.UpstreamProvider, identity
 	if len(preferredLocale) > 0 {
 		locale = preferredLocale[0]
 	}
+	locale, localeSource := storedBrowserLocale(locale)
 	user := model.User{
 		Username: username, PasswordHash: hash, PasswordConfigured: false,
-		DisplayName: displayName, AvatarURL: strings.TrimSpace(identity.AvatarURL), Locale: requestLocale(locale, ""),
+		DisplayName: displayName, AvatarURL: strings.TrimSpace(identity.AvatarURL), Locale: locale,
+		LocaleSource:         localeSource,
 		SecurityEmailEnabled: true, Role: "user", Status: "active",
 	}
 	if email != "" && s.isBootstrapAdminEmail(email) {

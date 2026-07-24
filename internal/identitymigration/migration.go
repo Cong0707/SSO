@@ -630,9 +630,10 @@ func (r *Runner) importUser(batchID string, sourceUser SourceUser, duplicateEmai
 			createdAt = time.Now().UTC()
 		}
 		username, _ := migratedUsername(sourceUser)
+		locale, localeSource := migratedLocale(sourceUser.SSOLocale)
 		user := model.User{
 			CreatedAt: createdAt, UpdatedAt: createdAt, Username: username, PasswordHash: sourceUser.Password,
-			PasswordConfigured: sourceUser.Password != "", DisplayName: strings.TrimSpace(sourceUser.DisplayName), Locale: migratedLocale(sourceUser.SSOLocale),
+			PasswordConfigured: sourceUser.Password != "", DisplayName: strings.TrimSpace(sourceUser.DisplayName), Locale: locale, LocaleSource: localeSource,
 			SecurityEmailEnabled: true, Role: "user", Status: sourceStatus(sourceUser),
 		}
 		if user.DisplayName == "" {
@@ -810,18 +811,18 @@ func sourceStatus(user SourceUser) string {
 	return "active"
 }
 
-func migratedLocale(value string) string {
+func migratedLocale(value string) (string, string) {
 	normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), "_", "-"))
 	base := strings.Split(normalized, "-")[0]
 	switch {
 	case normalized == "zh-tw", normalized == "zh-hk", normalized == "zh-mo", normalized == "zhtw", strings.HasPrefix(normalized, "zh-hant"):
-		return "zhTW"
+		return "zhTW", model.LocaleSourceImported
 	case normalized == "zh-cn", normalized == "zh-sg", normalized == "zhcn", normalized == "zh", strings.HasPrefix(normalized, "zh-hans"):
-		return "zhCN"
+		return "zhCN", model.LocaleSourceImported
 	case base == "en", base == "fr", base == "ru", base == "ja", base == "vi":
-		return base
+		return base, model.LocaleSourceImported
 	default:
-		return "zhCN"
+		return "en", model.LocaleSourceUnknown
 	}
 }
 

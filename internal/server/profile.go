@@ -38,6 +38,7 @@ func (s *Server) updateProfile(c *gin.Context) {
 	}
 	user := s.user(c)
 	previousLocale := user.Locale
+	previousLocaleSource := user.LocaleSource
 	updates := make(map[string]any, 3)
 	if input.DisplayName != nil {
 		displayName := strings.TrimSpace(*input.DisplayName)
@@ -51,13 +52,15 @@ func (s *Server) updateProfile(c *gin.Context) {
 	if input.Locale != nil {
 		locale := normalizeProfileLocale(*input.Locale)
 		updates["locale"] = locale
+		updates["locale_source"] = model.LocaleSourceUser
 		user.Locale = locale
+		user.LocaleSource = model.LocaleSourceUser
 	}
 	if input.SecurityEmailEnabled != nil {
 		updates["security_email_enabled"] = *input.SecurityEmailEnabled
 		user.SecurityEmailEnabled = *input.SecurityEmailEnabled
 	}
-	localeChanged := input.Locale != nil && user.Locale != previousLocale
+	localeChanged := input.Locale != nil && (user.Locale != previousLocale || user.LocaleSource != previousLocaleSource)
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		if len(updates) > 0 {
 			if err := tx.Model(&model.User{}).Where("id = ?", user.ID).Updates(updates).Error; err != nil {

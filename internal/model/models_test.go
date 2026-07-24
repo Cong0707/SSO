@@ -94,6 +94,61 @@ func TestMigrateMovesUnverifiedEmailsAndEnforcesVerifiedBindings(t *testing.T) {
 		t.Fatal("database accepted an upstream binding without verification time")
 	}
 	if err := SchemaReady(db); err != nil {
-		t.Fatalf("schema v3 is not ready: %v", err)
+		t.Fatalf("schema v4 is not ready: %v", err)
+	}
+}
+
+func TestMigrateLocaleSourcesUsesOnlyExplicitLifecycleEvents(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "locale-v3.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := db.AutoMigrate(&User{}, &AuditEvent{}, &LifecycleEvent{}, &IdentityMigrationMapping{}); err != nil {
+		t.Fatal(err)
+	}
+	users := []User{
+		{Username: "mapped-unknown", PasswordHash: "hash", Locale: "en", LocaleSource: LocaleSourceUnknown, Role: "user", Status: "active"},
+		{Username: "mapped-explicit", PasswordHash: "hash", Locale: "zhCN", LocaleSource: LocaleSourceUnknown, Role: "user", Status: "active"},
+		{Username: "native", PasswordHash: "hash", Locale: "ja", LocaleSource: LocaleSourceUnknown, Role: "user", Status: "active"},
+	}
+	if err := db.Create(&users).Error; err != nil {
+		t.Fatal(err)
+	}
+	mappedAt := time.Now().UTC().Add(-time.Hour)
+	mappings := []IdentityMigrationMapping{
+		{CreatedAt: mappedAt, BatchID: "batch", SourceSystem: "new-api", SourceUserID: 1, SSOUserID: users[0].ID},
+		{CreatedAt: mappedAt, BatchID: "batch", SourceSystem: "new-api", SourceUserID: 2, SSOUserID: users[1].ID},
+	}
+	if err := db.Create(&mappings).Error; err != nil {
+		t.Fatal(err)
+	}
+	// A generic profile audit is not proof that the user selected a language.
+	if err := db.Create(&AuditEvent{CreatedAt: time.Now().UTC(), UserID: users[0].ID, Action: "profile.updated"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := db.Create(&LifecycleEvent{
+		ID: "locale-event", CreatedAt: now, UserID: users[1].ID, IdentityVersion: 2,
+		Type: "profile.updated", Payload: `{"locale":"zhCN"}`, NextAttemptAt: now,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateLocaleSources(db); err != nil {
+		t.Fatal(err)
+	}
+	var reloaded []User
+	if err := db.Order("id ASC").Find(&reloaded).Error; err != nil {
+		t.Fatal(err)
+	}
+	if reloaded[0].LocaleSource != LocaleSourceUnknown || reloaded[1].LocaleSource != LocaleSourceUser || reloaded[2].LocaleSource != LocaleSourceUnknown {
+		t.Fatalf("unexpected locale sources after migration: %#v", reloaded)
+	}
+	if reloaded[0].Locale != "en" || reloaded[1].Locale != "zhCN" || reloaded[2].Locale != "ja" {
+		t.Fatalf("migration rewrote existing locale values: %#v", reloaded)
 	}
 }
