@@ -2671,9 +2671,9 @@ function ProfilePage({
                       <strong>
                         {binding.display_name} <code>{binding.identifier}</code>
                       </strong>
-                      <span>
-                        {binding.account_name || binding.email || tr("已验证")}
-                      </span>
+                      {(binding.account_name || binding.email) && (
+                        <span>{binding.account_name || binding.email}</span>
+                      )}
                     </div>
                     <div className="binding-badges">
                       <Badge tone={binding.verified ? "success" : "warning"}>
