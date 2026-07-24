@@ -27,6 +27,12 @@ func TestContentSecurityPolicyAllowsCAPWorkers(t *testing.T) {
 	if !strings.Contains(policy, "worker-src 'self' blob:") {
 		t.Fatalf("CAP worker source missing from CSP: %q", policy)
 	}
+	if !strings.Contains(policy, "script-src 'self' 'wasm-unsafe-eval'") {
+		t.Fatalf("CAP WebAssembly execution missing from CSP: %q", policy)
+	}
+	if strings.Contains(policy, "'unsafe-eval'") {
+		t.Fatalf("CSP must not allow general JavaScript eval: %q", policy)
+	}
 	if response.Header().Get("Strict-Transport-Security") == "" {
 		t.Fatal("secure deployment must emit HSTS")
 	}

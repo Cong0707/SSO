@@ -237,7 +237,7 @@ func (s *Server) requestContext(c *gin.Context) {
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("X-Frame-Options", "DENY")
 	c.Header("Referrer-Policy", "same-origin")
-	c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' https://challenges.cloudflare.com https://telegram.org; worker-src 'self' blob:; frame-src https://challenges.cloudflare.com https://oauth.telegram.org https://telegram.org; connect-src 'self' https://challenges.cloudflare.com")
+	c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://telegram.org; worker-src 'self' blob:; frame-src https://challenges.cloudflare.com https://oauth.telegram.org https://telegram.org; connect-src 'self' https://challenges.cloudflare.com")
 	c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 	if s.Cfg.CookieSecure {
 		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
