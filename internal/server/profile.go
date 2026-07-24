@@ -37,6 +37,7 @@ func (s *Server) updateProfile(c *gin.Context) {
 		return
 	}
 	user := s.user(c)
+	previousLocale := user.Locale
 	updates := make(map[string]any, 3)
 	if input.DisplayName != nil {
 		displayName := strings.TrimSpace(*input.DisplayName)
@@ -56,7 +57,18 @@ func (s *Server) updateProfile(c *gin.Context) {
 		updates["security_email_enabled"] = *input.SecurityEmailEnabled
 		user.SecurityEmailEnabled = *input.SecurityEmailEnabled
 	}
-	if len(updates) > 0 && s.DB.Model(user).Updates(updates).Error != nil {
+	localeChanged := input.Locale != nil && user.Locale != previousLocale
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if len(updates) > 0 {
+			if err := tx.Model(&model.User{}).Where("id = ?", user.ID).Updates(updates).Error; err != nil {
+				return err
+			}
+		}
+		if localeChanged {
+			return s.recordLifecycleEvent(tx, user.ID, "profile.updated", map[string]any{"locale": user.Locale})
+		}
+		return nil
+	}); err != nil {
 		s.serveError(c, http.StatusInternalServerError, "保存资料失败")
 		return
 	}

@@ -108,6 +108,14 @@ func TestRegistrationAndOIDCAuthorizationCodeFlow(t *testing.T) {
 	if err := db.First(&profileAfterUpdate, registeredUser.ID).Error; err != nil || profileAfterUpdate.AvatarURL != "" {
 		t.Fatalf("profile update changed stored avatar URL: user=%#v err=%v", profileAfterUpdate, err)
 	}
+	var localeEvent model.LifecycleEvent
+	if err := db.Where("user_id = ? AND type = ?", registeredUser.ID, "profile.updated").Order("created_at DESC").First(&localeEvent).Error; err != nil {
+		t.Fatalf("profile locale lifecycle event was not recorded: %v", err)
+	}
+	var localePayload map[string]any
+	if err := json.Unmarshal([]byte(localeEvent.Payload), &localePayload); err != nil || localePayload["locale"] != "zhCN" {
+		t.Fatalf("profile locale lifecycle payload is invalid: payload=%#v err=%v", localePayload, err)
+	}
 	emailBinding := doJSON(t, client, http.MethodPost, httpServer.URL+"/api/profile/emails/prepare", csrf, map[string]any{"email": "alice.secondary@example.com"})
 	if nestedString(t, emailBinding, "data", "flow_token") == "" {
 		t.Fatal("email binding without a password did not create a verification flow")

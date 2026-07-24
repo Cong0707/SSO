@@ -67,6 +67,7 @@ type SourceUser struct {
 	Username    string         `gorm:"column:username"`
 	Password    string         `gorm:"column:password"`
 	DisplayName string         `gorm:"column:display_name"`
+	SSOLocale   string         `gorm:"column:sso_locale"`
 	Role        int            `gorm:"column:role"`
 	Status      int            `gorm:"column:status"`
 	Email       string         `gorm:"column:email"`
@@ -631,7 +632,7 @@ func (r *Runner) importUser(batchID string, sourceUser SourceUser, duplicateEmai
 		username, _ := migratedUsername(sourceUser)
 		user := model.User{
 			CreatedAt: createdAt, UpdatedAt: createdAt, Username: username, PasswordHash: sourceUser.Password,
-			PasswordConfigured: sourceUser.Password != "", DisplayName: strings.TrimSpace(sourceUser.DisplayName), Locale: "en",
+			PasswordConfigured: sourceUser.Password != "", DisplayName: strings.TrimSpace(sourceUser.DisplayName), Locale: migratedLocale(sourceUser.SSOLocale),
 			SecurityEmailEnabled: true, Role: "user", Status: sourceStatus(sourceUser),
 		}
 		if user.DisplayName == "" {
@@ -807,6 +808,21 @@ func sourceStatus(user SourceUser) string {
 		return "deactivated"
 	}
 	return "active"
+}
+
+func migratedLocale(value string) string {
+	normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), "_", "-"))
+	base := strings.Split(normalized, "-")[0]
+	switch {
+	case normalized == "zh-tw", normalized == "zh-hk", normalized == "zh-mo", normalized == "zhtw", strings.HasPrefix(normalized, "zh-hant"):
+		return "zhTW"
+	case normalized == "zh-cn", normalized == "zh-sg", normalized == "zhcn", normalized == "zh", strings.HasPrefix(normalized, "zh-hans"):
+		return "zhCN"
+	case base == "en", base == "fr", base == "ru", base == "ja", base == "vi":
+		return base
+	default:
+		return "zhCN"
+	}
 }
 
 func normalizeEmail(value string) string { return strings.ToLower(strings.TrimSpace(value)) }

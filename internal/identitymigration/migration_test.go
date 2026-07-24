@@ -13,6 +13,22 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestMigratedLocaleUsesSourcePreferenceAndChineseFallback(t *testing.T) {
+	tests := map[string]string{
+		"":        "zhCN",
+		"unknown": "zhCN",
+		"zh-CN":   "zhCN",
+		"zh_Hant": "zhTW",
+		"en-US":   "en",
+		"fr":      "fr",
+	}
+	for input, expected := range tests {
+		if actual := migratedLocale(input); actual != expected {
+			t.Fatalf("migratedLocale(%q) = %q, want %q", input, actual, expected)
+		}
+	}
+}
+
 func TestMigrationImportVerifyAndRollback(t *testing.T) {
 	temp := t.TempDir()
 	sourcePath := filepath.Join(temp, "source.db")

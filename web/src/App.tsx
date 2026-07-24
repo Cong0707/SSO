@@ -209,29 +209,27 @@ export function App() {
       .finally(() => setChecking(false));
   }, [i18n.changeLocale, location.pathname]);
   const acceptUser = async (nextUser: User) => {
-    const locale = i18n.locale;
-    const localizedUser = { ...nextUser, locale };
-    setUser(localizedUser);
-    try {
-      await api<User>("/api/profile", {
-        method: "PATCH",
-        body: JSON.stringify({ locale }),
-      });
-    } catch {
-      // Authentication has succeeded even if saving this preference fails.
-    }
+    setUser(nextUser);
+    i18n.changeLocale(nextUser.locale);
   };
-  const changeLocale = async (value: string) => {
+  const changeLocale = async (value: string): Promise<LocaleCode> => {
+    const previousLocale = i18n.locale;
+    const previousUser = user;
     const locale = i18n.changeLocale(value);
-    if (!user) return;
+    if (!user) return locale;
     setUser({ ...user, locale });
     try {
-      await api<User>("/api/profile", {
+      const saved = await api<User>("/api/profile", {
         method: "PATCH",
         body: JSON.stringify({ locale }),
       });
+      setUser(saved);
+      return normalizeLocale(saved.locale);
     } catch (error) {
+      i18n.changeLocale(previousLocale);
+      if (previousUser) setUser(previousUser);
       show(error instanceof Error ? error.message : tr("保存失败"), "error");
+      throw error;
     }
   };
   const show = (message: string, tone?: Toast["tone"]) => {
@@ -312,13 +310,17 @@ export function App() {
         user={user}
         setUser={setUser}
         t={i18n.t}
-        locale={i18n.locale}
-        onLocaleChange={changeLocale}
         dark={dark}
         setDark={setDark}
         show={show}
       >
-        <PageRouter user={user} setUser={setUser} t={i18n.t} show={show} />
+        <PageRouter
+          user={user}
+          setUser={setUser}
+          t={i18n.t}
+          show={show}
+          onLocaleChange={changeLocale}
+        />
       </Shell>
       <ToastView toast={toast} />
     </>
@@ -329,8 +331,6 @@ function Shell(props: {
   user: User;
   setUser: (user: User | null) => void;
   t: T;
-  locale: LocaleCode;
-  onLocaleChange: (value: string) => void;
   dark: boolean;
   setDark: (value: boolean) => void;
   show: (message: string, tone?: Toast["tone"]) => void;
@@ -444,22 +444,10 @@ function Shell(props: {
                     <Moon size={15} />
                     {props.dark ? tr("浅色模式") : tr("深色模式")}
                   </button>
-                  <label className="popover-language">
+                  <Link to="/profile" onClick={() => setMenu(false)}>
                     <Languages size={15} />
-                    <span>{tr("语言")}</span>
-                    <select
-                      value={props.locale}
-                      onChange={(event) =>
-                        props.onLocaleChange(event.target.value)
-                      }
-                    >
-                      {LANGUAGE_OPTIONS.map((language) => (
-                        <option key={language.code} value={language.code}>
-                          {language.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                    {tr("语言")}
+                  </Link>
                   <button onClick={logout}>
                     <LogOut size={15} />
                     {props.t("logout")}
@@ -496,6 +484,7 @@ function PageRouter(props: {
   setUser: (user: User) => void;
   t: T;
   show: (message: string, tone?: Toast["tone"]) => void;
+  onLocaleChange: (value: string) => Promise<LocaleCode>;
 }) {
   const path = window.location.pathname;
   if (path.startsWith("/admin/users"))
@@ -520,6 +509,7 @@ function PageRouter(props: {
         setUser={props.setUser}
         t={props.t}
         show={props.show}
+        onLocaleChange={props.onLocaleChange}
       />
     );
   return <DashboardPage user={props.user} t={props.t} show={props.show} />;
@@ -2064,11 +2054,13 @@ function ProfilePage({
   setUser,
   t,
   show,
+  onLocaleChange,
 }: {
   user: User;
   setUser: (user: User) => void;
   t: T;
   show: (message: string, tone?: Toast["tone"]) => void;
+  onLocaleChange: (value: string) => Promise<LocaleCode>;
 }) {
   const [section, setSection] = useState<
     | "account"
@@ -2178,6 +2170,17 @@ function ProfilePage({
       show(tr("资料已保存"), "success");
     } catch (error) {
       show(error instanceof Error ? error.message : tr("保存失败"), "error");
+    }
+  }
+  async function changeProfileLocale(value: string) {
+    const previousLocale = profile.locale;
+    const locale = normalizeLocale(value);
+    setProfile((current) => ({ ...current, locale }));
+    try {
+      await onLocaleChange(locale);
+      show(tr("资料已保存"), "success");
+    } catch {
+      setProfile((current) => ({ ...current, locale: previousLocale }));
     }
   }
   async function prepareEmailBinding(event: FormEvent) {
@@ -2496,6 +2499,19 @@ function ProfilePage({
                     })
                   }
                 />
+                <Select
+                  label={tr("语言")}
+                  value={profile.locale}
+                  onChange={(event) =>
+                    void changeProfileLocale(event.target.value)
+                  }
+                >
+                  {LANGUAGE_OPTIONS.map((language) => (
+                    <option key={language.code} value={language.code}>
+                      {language.label}
+                    </option>
+                  ))}
+                </Select>
                 <label className="setting-toggle">
                   <div>
                     <strong>{tr("接收安全邮件")}</strong>
