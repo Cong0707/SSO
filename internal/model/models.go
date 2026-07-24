@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const CurrentSchemaVersion uint64 = 3
@@ -395,6 +396,7 @@ func migrateVerifiedBindings(db *gorm.DB) error {
 			if err := tx.Where("verified_at IS NULL").Order("id ASC").Find(&emails).Error; err != nil {
 				return fmt.Errorf("find unverified email bindings: %w", err)
 			}
+			legacyIdentifiers := make([]LegacyLoginIdentifier, 0, len(emails))
 			for _, email := range emails {
 				if email.ID > uint64(1<<63-1) {
 					return fmt.Errorf("email binding id %d cannot be converted to a legacy source id", email.ID)
@@ -403,32 +405,23 @@ func migrateVerifiedBindings(db *gorm.DB) error {
 				if createdAt.IsZero() {
 					createdAt = time.Now().UTC()
 				}
-				legacy := LegacyLoginIdentifier{
+				legacyIdentifiers = append(legacyIdentifiers, LegacyLoginIdentifier{
 					CreatedAt: createdAt, UserID: email.UserID, Kind: "email", Identifier: email.Email,
 					NormalizedIdentifier: email.NormalizedEmail, SourceSystem: "sso-unverified-email-v2", SourceUserID: int64(email.ID),
+				})
+			}
+			if len(legacyIdentifiers) > 0 {
+				if err := tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(&legacyIdentifiers, 500).Error; err != nil {
+					return fmt.Errorf("preserve unverified email bindings: %w", err)
 				}
-				if err := tx.Where("source_system = ? AND source_user_id = ? AND kind = ?", legacy.SourceSystem, legacy.SourceUserID, legacy.Kind).
-					FirstOrCreate(&legacy).Error; err != nil {
-					return fmt.Errorf("preserve unverified email binding %d: %w", email.ID, err)
-				}
-				if err := tx.Delete(&email).Error; err != nil {
-					return fmt.Errorf("remove unverified email binding %d: %w", email.ID, err)
+				if err := tx.Where("verified_at IS NULL").Delete(&UserEmail{}).Error; err != nil {
+					return fmt.Errorf("remove unverified email bindings: %w", err)
 				}
 			}
 		}
 		if hasIdentities {
-			var identities []UpstreamIdentity
-			if err := tx.Where("verified_at IS NULL").Order("id ASC").Find(&identities).Error; err != nil {
-				return fmt.Errorf("find unverified upstream identities: %w", err)
-			}
-			for _, identity := range identities {
-				verifiedAt := identity.CreatedAt
-				if verifiedAt.IsZero() {
-					verifiedAt = time.Now().UTC()
-				}
-				if err := tx.Model(&identity).UpdateColumn("verified_at", &verifiedAt).Error; err != nil {
-					return fmt.Errorf("verify upstream identity %d: %w", identity.ID, err)
-				}
+			if err := tx.Model(&UpstreamIdentity{}).Where("verified_at IS NULL").UpdateColumn("verified_at", time.Now().UTC()).Error; err != nil {
+				return fmt.Errorf("verify upstream identities: %w", err)
 			}
 		}
 		return nil
