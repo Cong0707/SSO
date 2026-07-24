@@ -25,21 +25,17 @@ spec:
         - protocol: TCP
           port: 465
     - to:
-        - podSelector:
-            matchLabels:
-              postgres-operator.crunchydata.com/cluster: sso-postgres
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: sso-redis-ha
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: new-api
-          podSelector:
-            matchLabels:
-              app.kubernetes.io/name: cap
+              kubernetes.io/metadata.name: database
       ports:
         - protocol: TCP
           port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: new-api
+      ports:
         - protocol: TCP
           port: 6379
         - protocol: TCP

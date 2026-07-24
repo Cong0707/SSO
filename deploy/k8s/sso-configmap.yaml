@@ -21,7 +21,7 @@ data:
   SSO_CAP_SERVER_URL: "http://cap.new-api.svc.cluster.local:3000"
   SSO_TRUSTED_PROXIES: "10.250.0.0/16,10.200.0.0/16"
   SSO_RATE_LIMIT_ENABLED: "true"
-  SSO_REDIS_ADDR: "sso-redis-primary.sso.svc.cluster.local:6379"
+  SSO_REDIS_ADDR: "redis-primary.new-api.svc.cluster.local:6379"
   SSO_REDIS_DB: "0"
   SSO_REDIS_TLS: "false"
   SSO_REDIS_KEY_PREFIX: "xem-sso"
