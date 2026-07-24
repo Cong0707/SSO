@@ -85,7 +85,7 @@ func TestMigrationImportVerifyAndRollback(t *testing.T) {
 	}
 }
 
-func TestDryRunBlocksBothSidesOfDuplicateEmail(t *testing.T) {
+func TestDuplicateLegacyEmailIsPreservedWithoutBlockingImport(t *testing.T) {
 	temp := t.TempDir()
 	sourcePath := filepath.Join(temp, "source.db")
 	source, err := gorm.Open(sqlite.Open(sourcePath), &gorm.Config{})
@@ -116,14 +116,78 @@ func TestDryRunBlocksBothSidesOfDuplicateEmail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blocked := map[int64]bool{}
+	warned := map[int64]bool{}
 	for _, issue := range result.Issues {
-		if issue.Kind == "duplicate_email_in_source" && issue.Severity == "error" {
-			blocked[issue.SourceUserID] = true
+		if issue.Kind == "duplicate_email_preserved" && issue.Severity == "warning" {
+			warned[issue.SourceUserID] = true
 		}
 	}
-	if !blocked[1] || !blocked[2] {
-		t.Fatalf("duplicate email did not block both source users: %#v", result.Issues)
+	if !warned[1] || !warned[2] {
+		t.Fatalf("duplicate email was not reported for both source users: %#v", result.Issues)
+	}
+	imported, err := runner.Import()
+	if err != nil || imported.Imported != 2 || imported.Skipped != 0 {
+		t.Fatalf("duplicate email import failed: result=%#v err=%v", imported, err)
+	}
+	var legacyCount, emailCount int64
+	if err := target.Model(&model.LegacyLoginIdentifier{}).Count(&legacyCount).Error; err != nil || legacyCount != 2 {
+		t.Fatalf("legacy email rows=%d err=%v", legacyCount, err)
+	}
+	if err := target.Model(&model.UserEmail{}).Count(&emailCount).Error; err != nil || emailCount != 0 {
+		t.Fatalf("duplicate email unexpectedly became authoritative: rows=%d err=%v", emailCount, err)
+	}
+	verified, err := runner.Verify(imported.BatchID)
+	if err != nil || verified.Verified != 2 || len(verified.Issues) != 0 {
+		t.Fatalf("duplicate email verify failed: result=%#v err=%v", verified, err)
+	}
+}
+
+func TestLegacyUnicodeUsernameAndPasswordOnlyAccountRemainUsable(t *testing.T) {
+	temp := t.TempDir()
+	sourcePath := filepath.Join(temp, "source.db")
+	source, err := gorm.Open(sqlite.Open(sourcePath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceSQL, _ := source.DB()
+	t.Cleanup(func() { _ = sourceSQL.Close() })
+	if err := source.Table("users").AutoMigrate(&SourceUser{}); err != nil {
+		t.Fatal(err)
+	}
+	password, _ := bcrypt.GenerateFromPassword([]byte("Password123"), bcrypt.DefaultCost)
+	legacy := SourceUser{ID: 7, Username: "鱼", Password: string(password), Status: 1}
+	if err := source.Table("users").Create(&legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+	targetCfg := config.Config{DatabaseDriver: "sqlite", DatabaseDSN: filepath.Join(temp, "target.db")}
+	target, err := model.Open(targetCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetSQL, _ := target.DB()
+	t.Cleanup(func() { _ = targetSQL.Close() })
+	runner, err := New(target, targetCfg, Options{SourceDriver: "sqlite", SourceDSN: sourcePath, Limit: 20000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runnerSourceSQL, _ := runner.Source.DB()
+	t.Cleanup(func() { _ = runnerSourceSQL.Close() })
+	result, err := runner.DryRun()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, issue := range result.Issues {
+		if issue.Severity == "error" {
+			t.Fatalf("legacy username was blocked: %#v", result.Issues)
+		}
+	}
+	imported, err := runner.Import()
+	if err != nil || imported.Imported != 1 {
+		t.Fatalf("legacy username import failed: result=%#v err=%v", imported, err)
+	}
+	var user model.User
+	if err := target.Where("username = ?", "鱼").First(&user).Error; err != nil || !user.PasswordConfigured {
+		t.Fatalf("legacy username was not preserved: user=%#v err=%v", user, err)
 	}
 }
 

@@ -34,7 +34,7 @@ func (s *Server) adminListUsers(c *gin.Context) {
 	query := s.DB.Model(&model.User{})
 	if q := strings.ToLower(strings.TrimSpace(c.Query("q"))); q != "" {
 		like := "%" + q + "%"
-		query = query.Where("LOWER(username) LIKE ? OR LOWER(display_name) LIKE ? OR EXISTS (SELECT 1 FROM user_emails WHERE user_emails.user_id = users.id AND user_emails.normalized_email LIKE ?)", like, like, like)
+		query = query.Where("LOWER(username) LIKE ? OR LOWER(display_name) LIKE ? OR EXISTS (SELECT 1 FROM user_emails WHERE user_emails.user_id = users.id AND user_emails.normalized_email LIKE ?) OR EXISTS (SELECT 1 FROM legacy_login_identifiers WHERE legacy_login_identifiers.user_id = users.id AND legacy_login_identifiers.normalized_identifier LIKE ?)", like, like, like, like)
 	}
 	if status := strings.TrimSpace(c.Query("status")); status != "" && status != "all" {
 		query = query.Where("status = ?", status)

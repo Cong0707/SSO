@@ -5,10 +5,10 @@ package identitymigration
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Cong0707/sso/internal/config"
 	"github.com/Cong0707/sso/internal/model"
@@ -23,8 +23,6 @@ import (
 )
 
 const SourceSystemNewAPI = "new-api"
-
-var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{3,64}$`)
 
 type Options struct {
 	SourceDriver      string
@@ -104,8 +102,8 @@ func New(target *gorm.DB, cfg config.Config, opts Options) (*Runner, error) {
 	if opts.SourceSystem == "" {
 		opts.SourceSystem = SourceSystemNewAPI
 	}
-	if opts.Limit <= 0 || opts.Limit > 5000 {
-		opts.Limit = 5000
+	if opts.Limit <= 0 || opts.Limit > 100000 {
+		opts.Limit = 20000
 	}
 	runner := &Runner{Target: target, Cfg: cfg, Opts: opts}
 	if strings.TrimSpace(opts.SourceDSN) == "" {
@@ -136,7 +134,10 @@ func (r *Runner) DryRun() (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	issues := r.validate(users)
+	issues, err := r.validate(users)
+	if err != nil {
+		return Result{}, err
+	}
 	return Result{SourceUsers: len(users), Issues: issues}, nil
 }
 
@@ -165,7 +166,10 @@ func (r *Runner) Import() (Result, error) {
 	}
 
 	result := Result{BatchID: batchID, SourceUsers: len(users)}
-	issues := r.validate(users)
+	issues, err := r.validate(users)
+	if err != nil {
+		return result, err
+	}
 	result.Issues = issues
 	if err := r.persistIssues(batchID, issues); err != nil {
 		return result, err
@@ -176,8 +180,16 @@ func (r *Runner) Import() (Result, error) {
 			blocked[issue.SourceUserID] = true
 		}
 	}
+	mapped, err := r.mappedSourceUsers()
+	if err != nil {
+		return result, err
+	}
+	duplicateEmails, err := r.sourceDuplicateEmails()
+	if err != nil {
+		return result, err
+	}
 	for _, sourceUser := range users {
-		if r.hasMapping(sourceUser.ID) {
+		if mapped[sourceUser.ID] {
 			result.Skipped++
 			continue
 		}
@@ -185,7 +197,7 @@ func (r *Runner) Import() (Result, error) {
 			result.Skipped++
 			continue
 		}
-		if err := r.importUser(batchID, sourceUser); err != nil {
+		if err := r.importUser(batchID, sourceUser, duplicateEmails[normalizeEmail(sourceUser.Email)]); err != nil {
 			issue := Issue{SourceUserID: sourceUser.ID, Severity: "error", Kind: "import_failed", Detail: err.Error()}
 			result.Issues = append(result.Issues, issue)
 			_ = r.persistIssues(batchID, []Issue{issue})
@@ -213,15 +225,72 @@ func (r *Runner) Verify(batchID string) (Result, error) {
 	if err := r.Target.Where("batch_id = ?", batchID).Order("source_user_id ASC").Find(&mappings).Error; err != nil {
 		return Result{}, err
 	}
+	var sourceUsers []SourceUser
+	if err := r.Source.Unscoped().Table("users").Find(&sourceUsers).Error; err != nil {
+		return Result{}, err
+	}
+	sourceByID := make(map[int64]SourceUser, len(sourceUsers))
+	for _, sourceUser := range sourceUsers {
+		sourceByID[sourceUser.ID] = sourceUser
+	}
+	var targetUsers []model.User
+	if err := r.Target.Find(&targetUsers).Error; err != nil {
+		return Result{}, err
+	}
+	targetByID := make(map[uint64]model.User, len(targetUsers))
+	for _, targetUser := range targetUsers {
+		targetByID[targetUser.ID] = targetUser
+	}
+	var emailBindings []model.UserEmail
+	if err := r.Target.Find(&emailBindings).Error; err != nil {
+		return Result{}, err
+	}
+	emailsByUser := make(map[uint64]map[string]bool)
+	for _, binding := range emailBindings {
+		if emailsByUser[binding.UserID] == nil {
+			emailsByUser[binding.UserID] = make(map[string]bool)
+		}
+		emailsByUser[binding.UserID][binding.NormalizedEmail] = true
+	}
+	var legacyIdentifiers []model.LegacyLoginIdentifier
+	if err := r.Target.Where("source_system = ?", r.Opts.SourceSystem).Find(&legacyIdentifiers).Error; err != nil {
+		return Result{}, err
+	}
+	legacyBySource := make(map[string]model.LegacyLoginIdentifier, len(legacyIdentifiers))
+	for _, identifier := range legacyIdentifiers {
+		key := fmt.Sprintf("%d\x00%s", identifier.SourceUserID, identifier.Kind)
+		legacyBySource[key] = identifier
+	}
+	var providers []model.UpstreamProvider
+	if err := r.Target.Find(&providers).Error; err != nil {
+		return Result{}, err
+	}
+	providerKindByID := make(map[uint64]string, len(providers))
+	for _, provider := range providers {
+		providerKindByID[provider.ID] = provider.Kind
+	}
+	var upstreamIdentities []model.UpstreamIdentity
+	if err := r.Target.Find(&upstreamIdentities).Error; err != nil {
+		return Result{}, err
+	}
+	identitySet := make(map[string]bool, len(upstreamIdentities))
+	for _, identity := range upstreamIdentities {
+		kind := providerKindByID[identity.ProviderID]
+		identitySet[fmt.Sprintf("%d\x00%s\x00%s", identity.UserID, kind, identity.ExternalID)] = true
+	}
+	duplicateEmails, err := r.sourceDuplicateEmails()
+	if err != nil {
+		return Result{}, err
+	}
 	result := Result{BatchID: batchID}
 	for _, mapping := range mappings {
-		var sourceUser SourceUser
-		if err := r.Source.Unscoped().Table("users").Where("id = ?", mapping.SourceUserID).First(&sourceUser).Error; err != nil {
+		sourceUser, ok := sourceByID[mapping.SourceUserID]
+		if !ok {
 			result.Issues = append(result.Issues, Issue{SourceUserID: mapping.SourceUserID, Severity: "error", Kind: "source_missing", Detail: "source user no longer exists"})
 			continue
 		}
-		var targetUser model.User
-		if err := r.Target.First(&targetUser, mapping.SSOUserID).Error; err != nil {
+		targetUser, ok := targetByID[mapping.SSOUserID]
+		if !ok {
 			result.Issues = append(result.Issues, Issue{SourceUserID: mapping.SourceUserID, Severity: "error", Kind: "target_missing", Detail: "mapped SSO user no longer exists"})
 			continue
 		}
@@ -229,19 +298,42 @@ func (r *Runner) Verify(batchID string) (Result, error) {
 		if expectedDisplayName == "" {
 			expectedDisplayName = strings.TrimSpace(sourceUser.Username)
 		}
+		expectedUsername, _ := migratedUsername(sourceUser)
 		passwordMismatch := sourceUser.Password != "" && targetUser.PasswordHash != sourceUser.Password
 		passwordMismatch = passwordMismatch || sourceUser.Password == "" && targetUser.PasswordConfigured
-		if targetUser.Username != strings.TrimSpace(sourceUser.Username) || targetUser.DisplayName != expectedDisplayName || passwordMismatch {
-			result.Issues = append(result.Issues, Issue{SourceUserID: mapping.SourceUserID, Severity: "error", Kind: "profile_checksum_mismatch", Detail: "username, display name, or password hash differs"})
+		expectedRole := "user"
+		if bootstrapAdmin(r.Cfg, normalizeEmail(sourceUser.Email)) {
+			expectedRole = "admin"
+		}
+		if targetUser.Username != expectedUsername || targetUser.DisplayName != expectedDisplayName || passwordMismatch || targetUser.Status != sourceStatus(sourceUser) || targetUser.Role != expectedRole {
+			result.Issues = append(result.Issues, Issue{SourceUserID: mapping.SourceUserID, Severity: "error", Kind: "profile_checksum_mismatch", Detail: "username, display name, password hash, role, or status differs"})
 			continue
 		}
 		email := normalizeEmail(sourceUser.Email)
 		if email != "" {
-			var binding model.UserEmail
-			if err := r.Target.Where("user_id = ? AND normalized_email = ?", targetUser.ID, email).First(&binding).Error; err != nil {
-				result.Issues = append(result.Issues, Issue{SourceUserID: mapping.SourceUserID, Severity: "error", Kind: "email_mapping_missing", Detail: email})
-				continue
+			if validEmail(email) && !duplicateEmails[email] {
+				if !emailsByUser[targetUser.ID][email] {
+					result.Issues = append(result.Issues, Issue{SourceUserID: mapping.SourceUserID, Severity: "error", Kind: "email_mapping_missing", Detail: email})
+					continue
+				}
+			} else {
+				legacy, ok := legacyBySource[fmt.Sprintf("%d\x00email", sourceUser.ID)]
+				if !ok || legacy.UserID != targetUser.ID || legacy.NormalizedIdentifier != email {
+					result.Issues = append(result.Issues, Issue{SourceUserID: mapping.SourceUserID, Severity: "error", Kind: "legacy_email_mapping_missing", Detail: email})
+					continue
+				}
 			}
+		}
+		identityMissing := false
+		for _, identity := range r.identities(sourceUser) {
+			key := fmt.Sprintf("%d\x00%s\x00%s", targetUser.ID, identity.Kind, identity.Subject)
+			if !identitySet[key] {
+				result.Issues = append(result.Issues, Issue{SourceUserID: mapping.SourceUserID, Severity: "error", Kind: "provider_mapping_missing", Detail: identity.Kind + ":" + identity.Subject})
+				identityMissing = true
+			}
+		}
+		if identityMissing {
+			continue
 		}
 		result.Verified++
 	}
@@ -305,46 +397,67 @@ func migrationUserHasActivity(tx *gorm.DB, userID uint64) (bool, error) {
 	return false, nil
 }
 
-func (r *Runner) validate(users []SourceUser) []Issue {
+type validationState struct {
+	mapped           map[int64]bool
+	targetUsernames  map[string]bool
+	targetEmails     map[string]bool
+	providers        map[string]model.UpstreamProvider
+	targetIdentities map[string]bool
+	passkeyUsers     map[int64]bool
+	totpUsers        map[int64]bool
+	duplicateEmails  map[string]bool
+}
+
+func (r *Runner) validate(users []SourceUser) ([]Issue, error) {
+	state, err := r.loadValidationState()
+	if err != nil {
+		return nil, err
+	}
 	issues := make([]Issue, 0)
 	seenUsernames := make(map[string]int64)
-	seenEmails := make(map[string]int64)
+	seenFoldedUsernames := make(map[string]int64)
 	seenIdentities := make(map[string]int64)
 	for _, user := range users {
-		username := strings.TrimSpace(user.Username)
-		if !usernamePattern.MatchString(username) {
-			issues = append(issues, Issue{user.ID, "error", "invalid_username", "username must contain 3-64 ASCII letters, digits, _ or -"})
+		username, rewritten := migratedUsername(user)
+		if rewritten {
+			issues = append(issues, Issue{user.ID, "warning", "username_rewritten", "empty, oversized, or invalid legacy username was replaced with a stable alias"})
 		}
-		lowerUsername := strings.ToLower(username)
-		if prior, ok := seenUsernames[lowerUsername]; ok {
+		if prior, ok := seenUsernames[username]; ok {
 			issues = append(issues, Issue{user.ID, "error", "duplicate_username_in_source", fmt.Sprintf("duplicates source user %d", prior)})
 			issues = append(issues, Issue{prior, "error", "duplicate_username_in_source", fmt.Sprintf("duplicates source user %d", user.ID)})
 		} else {
-			seenUsernames[lowerUsername] = user.ID
+			seenUsernames[username] = user.ID
 		}
-		var targetCount int64
-		_ = r.Target.Model(&model.User{}).Where("LOWER(username) = ?", lowerUsername).Count(&targetCount).Error
-		if targetCount > 0 && !r.hasMapping(user.ID) {
+		foldedUsername := strings.ToLower(strings.TrimSpace(username))
+		if prior, ok := seenFoldedUsernames[foldedUsername]; ok && prior != user.ID {
+			issues = append(issues, Issue{user.ID, "warning", "case_insensitive_username_collision", fmt.Sprintf("requires exact username casing; conflicts with source user %d", prior)})
+			issues = append(issues, Issue{prior, "warning", "case_insensitive_username_collision", fmt.Sprintf("requires exact username casing; conflicts with source user %d", user.ID)})
+		} else {
+			seenFoldedUsernames[foldedUsername] = user.ID
+		}
+		if state.targetUsernames[username] && !state.mapped[user.ID] {
 			issues = append(issues, Issue{user.ID, "error", "username_already_exists", username})
 		}
+
 		email := normalizeEmail(user.Email)
 		if email != "" {
-			if !validEmail(email) {
-				issues = append(issues, Issue{user.ID, "error", "invalid_email", email})
-			} else if prior, ok := seenEmails[email]; ok {
-				issues = append(issues, Issue{user.ID, "error", "duplicate_email_in_source", fmt.Sprintf("duplicates source user %d", prior)})
-				issues = append(issues, Issue{prior, "error", "duplicate_email_in_source", fmt.Sprintf("duplicates source user %d", user.ID)})
-			} else {
-				seenEmails[email] = user.ID
-			}
-			_ = r.Target.Model(&model.UserEmail{}).Where("normalized_email = ?", email).Count(&targetCount).Error
-			if targetCount > 0 && !r.hasMapping(user.ID) {
+			switch {
+			case !validEmail(email):
+				issues = append(issues, Issue{user.ID, "warning", "invalid_email_preserved", "legacy email is retained as non-authoritative metadata"})
+			case state.duplicateEmails[email]:
+				issues = append(issues, Issue{user.ID, "warning", "duplicate_email_preserved", "shared legacy email requires username login until it is uniquely claimed"})
+			case state.targetEmails[email] && !state.mapped[user.ID]:
 				issues = append(issues, Issue{user.ID, "error", "email_already_exists", email})
 			}
 		}
+
 		identities := r.identities(user)
-		if len(identities) == 0 && (email == "" || strings.TrimSpace(user.Password) == "") {
-			issues = append(issues, Issue{user.ID, "error", "no_login_identity", "source user needs both email and password, or at least one supported third-party identity"})
+		if len(identities) == 0 && strings.TrimSpace(user.Password) == "" {
+			severity := "error"
+			if sourceStatus(user) != "active" {
+				severity = "warning"
+			}
+			issues = append(issues, Issue{user.ID, severity, "no_login_identity", "source user has neither a password nor a supported third-party identity"})
 		}
 		if user.Password != "" {
 			if _, err := bcrypt.Cost([]byte(user.Password)); err != nil {
@@ -362,24 +475,80 @@ func (r *Runner) validate(users []SourceUser) []Issue {
 			if identity.Kind == "oidc" && strings.TrimSpace(r.Opts.OIDCIssuer) == "" {
 				issues = append(issues, Issue{user.ID, "error", "oidc_issuer_required", "provide --oidc-issuer before importing OIDC identities"})
 			}
-			var provider model.UpstreamProvider
-			if err := r.Target.Where("kind = ?", identity.Kind).First(&provider).Error; err == nil {
+			if provider, ok := state.providers[identity.Kind]; ok {
 				if identity.Kind == "oidc" && provider.IssuerURL != "" && strings.TrimRight(provider.IssuerURL, "/") != strings.TrimRight(strings.TrimSpace(r.Opts.OIDCIssuer), "/") {
 					issues = append(issues, Issue{user.ID, "error", "oidc_issuer_mismatch", "configured SSO OIDC issuer differs from the migration issuer"})
 				}
-				var identityCount int64
-				_ = r.Target.Model(&model.UpstreamIdentity{}).Where("provider_id = ? AND external_id = ?", provider.ID, identity.Subject).Count(&identityCount).Error
-				if identityCount > 0 && !r.hasMapping(user.ID) {
+				if state.targetIdentities[key] && !state.mapped[user.ID] {
 					issues = append(issues, Issue{user.ID, "error", "provider_subject_already_exists", identity.Kind + ":" + identity.Subject})
 				}
 			}
 		}
-		issues = append(issues, r.legacyCredentialIssues(user.ID)...)
+		if state.passkeyUsers[user.ID] {
+			issues = append(issues, Issue{user.ID, "warning", "passkey_requires_reregistration", "Passkeys cannot be transferred; user must register again in SSO"})
+		}
+		if state.totpUsers[user.ID] {
+			issues = append(issues, Issue{user.ID, "warning", "totp_requires_reenrollment", "TOTP and backup codes use a different protected format; user must enroll again in SSO"})
+		}
 	}
-	return deduplicateIssues(issues)
+	return deduplicateIssues(issues), nil
 }
 
-func (r *Runner) importUser(batchID string, sourceUser SourceUser) error {
+func (r *Runner) loadValidationState() (validationState, error) {
+	state := validationState{
+		mapped: make(map[int64]bool), targetUsernames: make(map[string]bool), targetEmails: make(map[string]bool),
+		providers: make(map[string]model.UpstreamProvider), targetIdentities: make(map[string]bool),
+		passkeyUsers: make(map[int64]bool), totpUsers: make(map[int64]bool), duplicateEmails: make(map[string]bool),
+	}
+	var err error
+	if state.mapped, err = r.mappedSourceUsers(); err != nil {
+		return state, err
+	}
+	var users []model.User
+	if err := r.Target.Select("username").Find(&users).Error; err != nil {
+		return state, err
+	}
+	for _, user := range users {
+		state.targetUsernames[user.Username] = true
+	}
+	var emails []string
+	if err := r.Target.Model(&model.UserEmail{}).Pluck("normalized_email", &emails).Error; err != nil {
+		return state, err
+	}
+	for _, email := range emails {
+		state.targetEmails[email] = true
+	}
+	var providers []model.UpstreamProvider
+	if err := r.Target.Find(&providers).Error; err != nil {
+		return state, err
+	}
+	providerKinds := make(map[uint64]string, len(providers))
+	for _, provider := range providers {
+		state.providers[provider.Kind] = provider
+		providerKinds[provider.ID] = provider.Kind
+	}
+	var identities []model.UpstreamIdentity
+	if err := r.Target.Select("provider_id", "external_id").Find(&identities).Error; err != nil {
+		return state, err
+	}
+	for _, identity := range identities {
+		if kind := providerKinds[identity.ProviderID]; kind != "" {
+			state.targetIdentities[kind+"\x00"+identity.ExternalID] = true
+		}
+	}
+	if state.passkeyUsers, err = r.sourceCredentialUsers("passkey_credentials", ""); err != nil {
+		return state, err
+	}
+	if state.totpUsers, err = r.sourceCredentialUsers("two_fas", "is_enabled = true"); err != nil {
+		return state, err
+	}
+	if state.duplicateEmails, err = r.sourceDuplicateEmails(); err != nil {
+		return state, err
+	}
+	return state, nil
+}
+
+func (r *Runner) importUser(batchID string, sourceUser SourceUser, duplicateEmail bool) error {
 	return r.Target.Transaction(func(tx *gorm.DB) error {
 		if r.hasMappingWithDB(tx, sourceUser.ID) {
 			return nil
@@ -389,8 +558,9 @@ func (r *Runner) importUser(batchID string, sourceUser SourceUser) error {
 		if sourceUser.CreatedAt <= 0 {
 			createdAt = time.Now().UTC()
 		}
+		username, _ := migratedUsername(sourceUser)
 		user := model.User{
-			CreatedAt: createdAt, UpdatedAt: createdAt, Username: strings.TrimSpace(sourceUser.Username), PasswordHash: sourceUser.Password,
+			CreatedAt: createdAt, UpdatedAt: createdAt, Username: username, PasswordHash: sourceUser.Password,
 			PasswordConfigured: sourceUser.Password != "", DisplayName: strings.TrimSpace(sourceUser.DisplayName), Locale: "en",
 			SecurityEmailEnabled: true, Role: "user", Status: sourceStatus(sourceUser),
 		}
@@ -422,13 +592,20 @@ func (r *Runner) importUser(batchID string, sourceUser SourceUser) error {
 		if err := tx.Create(&user).Error; err != nil {
 			return err
 		}
-		if email != "" {
+		if email != "" && validEmail(email) && !duplicateEmail {
 			var verifiedAt *time.Time
 			if r.Opts.TrustSourceEmails {
 				verified := createdAt
 				verifiedAt = &verified
 			}
 			if err := tx.Create(&model.UserEmail{UserID: user.ID, Email: email, NormalizedEmail: email, VerifiedAt: verifiedAt}).Error; err != nil {
+				return err
+			}
+		} else if email != "" {
+			if err := tx.Create(&model.LegacyLoginIdentifier{
+				UserID: user.ID, Kind: "email", Identifier: strings.TrimSpace(sourceUser.Email), NormalizedIdentifier: email,
+				SourceSystem: r.Opts.SourceSystem, SourceUserID: sourceUser.ID,
+			}).Error; err != nil {
 				return err
 			}
 		}
@@ -473,11 +650,72 @@ func (r *Runner) ensureProvider(tx *gorm.DB, kind string) (model.UpstreamProvide
 	return provider, tx.Create(&provider).Error
 }
 
-func (r *Runner) hasMapping(sourceID int64) bool { return r.hasMappingWithDB(r.Target, sourceID) }
-
 func (r *Runner) hasMappingWithDB(db *gorm.DB, sourceID int64) bool {
 	var count int64
 	return db.Model(&model.IdentityMigrationMapping{}).Where("source_system = ? AND source_user_id = ?", r.Opts.SourceSystem, sourceID).Count(&count).Error == nil && count > 0
+}
+
+func (r *Runner) mappedSourceUsers() (map[int64]bool, error) {
+	var sourceIDs []int64
+	if err := r.Target.Model(&model.IdentityMigrationMapping{}).
+		Where("source_system = ?", r.Opts.SourceSystem).
+		Pluck("source_user_id", &sourceIDs).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[int64]bool, len(sourceIDs))
+	for _, sourceID := range sourceIDs {
+		result[sourceID] = true
+	}
+	return result, nil
+}
+
+func (r *Runner) sourceCredentialUsers(table, condition string) (map[int64]bool, error) {
+	result := make(map[int64]bool)
+	if !r.Source.Migrator().HasTable(table) {
+		return result, nil
+	}
+	query := r.Source.Table(table)
+	if condition != "" {
+		query = query.Where(condition)
+	}
+	var sourceIDs []int64
+	if err := query.Distinct("user_id").Pluck("user_id", &sourceIDs).Error; err != nil {
+		return nil, err
+	}
+	for _, sourceID := range sourceIDs {
+		result[sourceID] = true
+	}
+	return result, nil
+}
+
+func (r *Runner) sourceDuplicateEmails() (map[string]bool, error) {
+	type duplicateEmail struct {
+		Normalized string `gorm:"column:normalized"`
+	}
+	var rows []duplicateEmail
+	expression := "LOWER(TRIM(email))"
+	err := r.Source.Unscoped().Table("users").
+		Select(expression + " AS normalized").
+		Where("email IS NOT NULL AND TRIM(email) <> ''").
+		Group(expression).
+		Having("COUNT(*) > 1").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		result[row.Normalized] = true
+	}
+	return result, nil
+}
+
+func migratedUsername(user SourceUser) (string, bool) {
+	value := user.Username
+	if strings.TrimSpace(value) == "" || !utf8.ValidString(value) || utf8.RuneCountInString(value) > 64 || strings.ContainsRune(value, '\x00') {
+		return fmt.Sprintf("xem_legacy_user_%d", user.ID), true
+	}
+	return value, false
 }
 
 func (r *Runner) persistIssues(batchID string, issues []Issue) error {
@@ -488,28 +726,7 @@ func (r *Runner) persistIssues(batchID string, issues []Issue) error {
 	for _, issue := range issues {
 		rows = append(rows, model.IdentityMigrationConflict{BatchID: batchID, SourceUserID: issue.SourceUserID, Severity: issue.Severity, Kind: issue.Kind, Detail: issue.Detail})
 	}
-	return r.Target.Create(&rows).Error
-}
-
-func (r *Runner) legacyCredentialIssues(userID int64) []Issue {
-	issues := make([]Issue, 0, 2)
-	for _, state := range []struct{ table, kind, detail string }{
-		{"passkey_credentials", "passkey_requires_reregistration", "Passkeys cannot be transferred; user must register again in SSO"},
-		{"two_fas", "totp_requires_reenrollment", "TOTP and backup codes use a different protected format; user must enroll again in SSO"},
-	} {
-		if !r.Source.Migrator().HasTable(state.table) {
-			continue
-		}
-		var count int64
-		query := r.Source.Table(state.table).Where("user_id = ?", userID)
-		if state.table == "two_fas" {
-			query = query.Where("is_enabled = ?", true)
-		}
-		if query.Count(&count).Error == nil && count > 0 {
-			issues = append(issues, Issue{userID, "warning", state.kind, state.detail})
-		}
-	}
-	return issues
+	return r.Target.CreateInBatches(&rows, 500).Error
 }
 
 func sourceStatus(user SourceUser) string {

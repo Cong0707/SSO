@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion uint64 = 1
+const CurrentSchemaVersion uint64 = 2
 
 type User struct {
 	ID                   uint64     `gorm:"primaryKey" json:"id"`
@@ -41,6 +41,23 @@ type UserEmail struct {
 	NormalizedEmail string     `gorm:"size:254;uniqueIndex;not null" json:"-"`
 	VerifiedAt      *time.Time `gorm:"index" json:"verified_at"`
 	User            User       `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
+}
+
+// LegacyLoginIdentifier preserves identifiers imported from systems whose
+// uniqueness rules are weaker than SSO's verified-email rules. In particular,
+// several legacy accounts may share the same unverified email. These records
+// remain non-authoritative and can be used for password login only when they
+// resolve to exactly one active account.
+type LegacyLoginIdentifier struct {
+	ID                   uint64    `gorm:"primaryKey" json:"id"`
+	CreatedAt            time.Time `json:"created_at"`
+	UserID               uint64    `gorm:"not null;index" json:"user_id"`
+	Kind                 string    `gorm:"size:32;not null;index:idx_legacy_identifier_lookup,priority:1;uniqueIndex:idx_legacy_source_identifier,priority:3" json:"kind"`
+	Identifier           string    `gorm:"size:254;not null" json:"identifier"`
+	NormalizedIdentifier string    `gorm:"size:254;not null;index:idx_legacy_identifier_lookup,priority:2" json:"-"`
+	SourceSystem         string    `gorm:"size:64;not null;uniqueIndex:idx_legacy_source_identifier,priority:1" json:"source_system"`
+	SourceUserID         int64     `gorm:"not null;uniqueIndex:idx_legacy_source_identifier,priority:2" json:"source_user_id"`
+	User                 User      `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
 }
 
 type Session struct {
@@ -317,6 +334,7 @@ func Migrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&User{},
 		&UserEmail{},
+		&LegacyLoginIdentifier{},
 		&Session{},
 		&MFABackupCode{},
 		&OAuthApplication{},

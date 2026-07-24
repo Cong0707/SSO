@@ -21,6 +21,7 @@ var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{2,31}$`)
 
 func (s *Server) identify(c *gin.Context) {
 	var input struct {
+		Identifier   string `json:"identifier"`
 		Email        string `json:"email"`
 		CaptchaToken string `json:"captcha_token"`
 		MergeToken   string `json:"merge_token"`
@@ -30,12 +31,17 @@ func (s *Server) identify(c *gin.Context) {
 		s.serveError(c, http.StatusBadRequest, "请求格式错误")
 		return
 	}
-	email := strings.ToLower(strings.TrimSpace(input.Email))
-	if !validEmail(email) {
-		s.serveError(c, http.StatusBadRequest, "请输入有效的邮箱")
+	identifier := input.Identifier
+	if strings.TrimSpace(identifier) == "" {
+		identifier = input.Email
+	}
+	trimmedIdentifier := strings.TrimSpace(identifier)
+	if trimmedIdentifier == "" {
+		s.serveError(c, http.StatusBadRequest, "请输入邮箱或用户名")
 		return
 	}
-	if !s.enforceRateLimitPair(c, "identify", email, s.Cfg.RateLimitIdentify, time.Minute) {
+	rateLimitIdentifier := strings.ToLower(trimmedIdentifier)
+	if !s.enforceRateLimitPair(c, "identify", rateLimitIdentifier, s.Cfg.RateLimitIdentify, time.Minute) {
 		return
 	}
 	if err := s.verifyCaptcha(input.CaptchaToken, clientIP(c)); err != nil {
@@ -53,13 +59,21 @@ func (s *Server) identify(c *gin.Context) {
 		sourceUserID = mergeFlow.SourceUserID
 		sourceSessionID = mergeFlow.SessionID
 	}
-	user, err := s.findUserByEmail(email)
+	user, err := s.findUserByIdentifier(identifier)
 	mode := "login"
 	var userID *uint64
 	username := ""
+	email := ""
+	if normalized := strings.ToLower(trimmedIdentifier); validEmail(normalized) {
+		email = normalized
+	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		if sourceUserID != nil {
 			s.serveError(c, http.StatusNotFound, "要合并的账号不存在")
+			return
+		}
+		if email == "" {
+			s.serveError(c, http.StatusNotFound, "账号不存在；注册新账号请使用邮箱")
 			return
 		}
 		if !s.settingBool(settingRegistrationEnabled, s.Cfg.RegistrationEnabled) {
@@ -67,6 +81,9 @@ func (s *Server) identify(c *gin.Context) {
 			return
 		}
 		mode = "register"
+	} else if errors.Is(err, errAmbiguousIdentifier) {
+		s.serveError(c, http.StatusConflict, "该标识关联多个旧账号，请使用原用户名并保留大小写登录")
+		return
 	} else if err != nil {
 		s.serveError(c, http.StatusInternalServerError, "读取账号失败")
 		return
@@ -82,7 +99,7 @@ func (s *Server) identify(c *gin.Context) {
 		userID = &user.ID
 	}
 	raw, flow, err := s.createAuthFlow(model.AuthFlow{
-		Purpose: "identify_" + mode, Identifier: email, Email: email, Username: username,
+		Purpose: "identify_" + mode, Identifier: trimmedIdentifier, Email: email, Username: username,
 		Locale: requestLocale(input.Locale, c.GetHeader("Accept-Language")), UserID: userID,
 		SourceUserID: sourceUserID, SessionID: sourceSessionID, ExpiresAt: time.Now().Add(10 * time.Minute),
 	})
@@ -131,6 +148,12 @@ func (s *Server) registerPrepare(c *gin.Context) {
 	var count int64
 	if err := s.DB.Model(&model.UserEmail{}).Where("normalized_email = ?", flow.Email).Count(&count).Error; err != nil || count > 0 {
 		s.serveError(c, http.StatusConflict, "邮箱已被使用")
+		return
+	}
+	if err := s.DB.Model(&model.LegacyLoginIdentifier{}).
+		Where("kind = ? AND normalized_identifier = ?", "email", flow.Email).
+		Count(&count).Error; err != nil || count > 0 {
+		s.serveError(c, http.StatusConflict, "邮箱已被旧账号使用")
 		return
 	}
 	if err := s.DB.Model(&model.User{}).Where("LOWER(username) = ?", strings.ToLower(input.Username)).Count(&count).Error; err != nil || count > 0 {

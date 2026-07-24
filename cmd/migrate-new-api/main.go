@@ -18,7 +18,7 @@ func main() {
 	sourceDSN := flag.String("source-dsn", os.Getenv("NEW_API_DATABASE_DSN"), "source database DSN")
 	batchID := flag.String("batch", "", "migration batch ID; import generates one when omitted")
 	afterID := flag.Int64("after-id", 0, "only scan source users with ID greater than this checkpoint")
-	limit := flag.Int("limit", 5000, "maximum source users to process")
+	limit := flag.Int("limit", 20000, "maximum source users to process")
 	oidcIssuer := flag.String("oidc-issuer", "", "issuer for imported OIDC subjects")
 	trustSourceEmails := flag.Bool("trust-source-emails", false, "mark source emails verified only when source ownership has been independently confirmed")
 	report := flag.String("report", "", "optional JSON report file")

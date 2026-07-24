@@ -762,7 +762,7 @@ function AuthPage(props: {
       }>("/api/auth/identify", {
         method: "POST",
         body: JSON.stringify({
-          email,
+          identifier: email,
           captcha_token: captchaToken,
           merge_token: mergeToken,
           locale: props.locale,
@@ -939,11 +939,11 @@ function AuthPage(props: {
         {step === 1 && (
           <form onSubmit={identifyAccount} className="form-stack">
             <Input
-              label={tr("邮箱")}
-              type="email"
+              label={tr("邮箱或用户名")}
+              type="text"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              autoComplete="email"
+              autoComplete="username"
               required
             />
             <BotProtectionChallenge
@@ -974,7 +974,7 @@ function AuthPage(props: {
             <input
               className="visually-hidden"
               value={email}
-              autoComplete="email"
+              autoComplete="username"
               readOnly
               tabIndex={-1}
               aria-hidden="true"
@@ -3907,7 +3907,7 @@ function AdminSettingsPage({
                     <strong>{tr("账号识别")}</strong>
                     <span>
                       {tr(
-                        "第一页使用邮箱识别账号；新用户在下一页设置用户名和密码。",
+                        "第一页可使用邮箱或用户名识别账号；新用户使用邮箱注册。",
                       )}
                     </span>
                   </div>

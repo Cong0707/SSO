@@ -11,14 +11,109 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+var errAmbiguousIdentifier = errors.New("login identifier resolves to multiple accounts")
+
 func (s *Server) findUserByEmail(email string) (model.User, error) {
-	var user model.User
 	email = strings.ToLower(strings.TrimSpace(email))
-	err := s.DB.Where(
-		"EXISTS (SELECT 1 FROM user_emails WHERE user_emails.user_id = users.id AND user_emails.normalized_email = ?)",
-		email,
-	).First(&user).Error
-	return user, err
+	var verifiedIDs []uint64
+	if err := s.DB.Model(&model.UserEmail{}).
+		Where("normalized_email = ? AND verified_at IS NOT NULL", email).
+		Pluck("user_id", &verifiedIDs).Error; err != nil {
+		return model.User{}, err
+	}
+	if len(verifiedIDs) > 0 {
+		verified := make(map[uint64]struct{}, len(verifiedIDs))
+		for _, id := range verifiedIDs {
+			verified[id] = struct{}{}
+		}
+		return s.resolveIdentifierUsers(verified)
+	}
+	ids := make(map[uint64]struct{})
+	var values []uint64
+	if err := s.DB.Model(&model.UserEmail{}).Where("normalized_email = ?", email).Pluck("user_id", &values).Error; err != nil {
+		return model.User{}, err
+	}
+	for _, id := range values {
+		ids[id] = struct{}{}
+	}
+	values = nil
+	if err := s.DB.Model(&model.LegacyLoginIdentifier{}).
+		Where("kind = ? AND normalized_identifier = ?", "email", email).
+		Pluck("user_id", &values).Error; err != nil {
+		return model.User{}, err
+	}
+	for _, id := range values {
+		ids[id] = struct{}{}
+	}
+	return s.resolveIdentifierUsers(ids)
+}
+
+func (s *Server) findUserByIdentifier(identifier string) (model.User, error) {
+	raw := identifier
+	trimmed := strings.TrimSpace(raw)
+	if email := strings.ToLower(trimmed); validEmail(email) {
+		user, err := s.findUserByEmail(email)
+		if err == nil || !errors.Is(err, gorm.ErrRecordNotFound) {
+			return user, err
+		}
+	}
+
+	for _, candidate := range []string{raw, trimmed} {
+		if candidate == "" {
+			continue
+		}
+		var user model.User
+		if err := s.DB.Where("username = ?", candidate).First(&user).Error; err == nil {
+			return user, nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.User{}, err
+		}
+		if candidate == trimmed {
+			break
+		}
+	}
+	if trimmed == "" {
+		return model.User{}, gorm.ErrRecordNotFound
+	}
+	var users []model.User
+	if err := s.DB.Where("LOWER(username) = ?", strings.ToLower(trimmed)).Order("id ASC").Limit(3).Find(&users).Error; err != nil {
+		return model.User{}, err
+	}
+	ids := make(map[uint64]struct{}, len(users))
+	for _, user := range users {
+		ids[user.ID] = struct{}{}
+	}
+	return s.resolveIdentifierUsers(ids)
+}
+
+func (s *Server) resolveIdentifierUsers(ids map[uint64]struct{}) (model.User, error) {
+	if len(ids) == 0 {
+		return model.User{}, gorm.ErrRecordNotFound
+	}
+	values := make([]uint64, 0, len(ids))
+	for id := range ids {
+		values = append(values, id)
+	}
+	var users []model.User
+	if err := s.DB.Where("id IN ?", values).Order("id ASC").Find(&users).Error; err != nil {
+		return model.User{}, err
+	}
+	if len(users) == 0 {
+		return model.User{}, gorm.ErrRecordNotFound
+	}
+	if len(users) == 1 {
+		return users[0], nil
+	}
+	active := make([]model.User, 0, len(users))
+	for _, user := range users {
+		if user.Status == "active" {
+			active = append(active, user)
+		}
+	}
+	if len(active) == 1 {
+		return active[0], nil
+	}
+	return model.User{}, errAmbiguousIdentifier
 }
 
 func (s *Server) mergeAccounts(firstID, secondID uint64) (model.User, bool, error) {

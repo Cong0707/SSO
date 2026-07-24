@@ -81,9 +81,18 @@ func (s *Server) prepareProfileEmail(c *gin.Context) {
 	if !s.enforceRateLimitPair(c, "profile_email", email, s.Cfg.RateLimitEmail, time.Hour) {
 		return
 	}
-	var count int64
-	if s.DB.Model(&model.UserEmail{}).Where("normalized_email = ?", email).Count(&count); count > 0 {
-		s.serveError(c, http.StatusConflict, "邮箱已被使用")
+	var existing model.UserEmail
+	if err := s.DB.Where("normalized_email = ?", email).First(&existing).Error; err == nil {
+		if existing.UserID != user.ID {
+			s.serveError(c, http.StatusConflict, "邮箱已被使用")
+			return
+		}
+		if existing.VerifiedAt != nil {
+			s.serveError(c, http.StatusConflict, "邮箱已经验证")
+			return
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		s.serveError(c, http.StatusInternalServerError, "读取邮箱绑定失败")
 		return
 	}
 	code, err := numericCode()
@@ -140,8 +149,20 @@ func (s *Server) completeProfileEmail(c *gin.Context) {
 		if result.Error != nil || result.RowsAffected != 1 {
 			return fmt.Errorf("邮箱验证流程已被使用")
 		}
-		email := model.UserEmail{UserID: user.ID, Email: flow.Email, NormalizedEmail: flow.Email, VerifiedAt: &now}
-		if err := tx.Create(&email).Error; err != nil {
+		var email model.UserEmail
+		if err := tx.Where("normalized_email = ?", flow.Email).First(&email).Error; err == nil {
+			if email.UserID != user.ID {
+				return fmt.Errorf("邮箱已被使用")
+			}
+			if err := tx.Model(&email).Updates(map[string]any{"email": flow.Email, "verified_at": &now}).Error; err != nil {
+				return err
+			}
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			email = model.UserEmail{UserID: user.ID, Email: flow.Email, NormalizedEmail: flow.Email, VerifiedAt: &now}
+			if err := tx.Create(&email).Error; err != nil {
+				return err
+			}
+		} else {
 			return err
 		}
 		return nil

@@ -15,6 +15,24 @@ type Translation = Record<LocaleCode, string>;
 
 const resources = translations as Record<string, Translation>;
 const dynamicResources: Record<string, Translation> = {
+  "邮箱或用户名": {
+    zhCN: "邮箱或用户名",
+    en: "Email or username",
+    fr: "E-mail ou nom d'utilisateur",
+    ru: "Электронная почта или имя пользователя",
+    ja: "メールアドレスまたはユーザー名",
+    vi: "Email hoặc tên người dùng",
+    zhTW: "電子郵件或使用者名稱",
+  },
+  "第一页可使用邮箱或用户名识别账号；新用户使用邮箱注册。": {
+    zhCN: "第一页可使用邮箱或用户名识别账号；新用户使用邮箱注册。",
+    en: "Use an email address or username to identify an account; new users register with an email address.",
+    fr: "Utilisez une adresse e-mail ou un nom d'utilisateur pour identifier un compte ; les nouveaux utilisateurs s'inscrivent avec une adresse e-mail.",
+    ru: "Для входа используйте электронную почту или имя пользователя; новые пользователи регистрируются по электронной почте.",
+    ja: "メールアドレスまたはユーザー名でアカウントを識別します。新規ユーザーはメールアドレスで登録します。",
+    vi: "Dùng email hoặc tên người dùng để xác định tài khoản; người dùng mới đăng ký bằng email.",
+    zhTW: "第一頁可使用電子郵件或使用者名稱識別帳號；新使用者使用電子郵件註冊。",
+  },
   "重新发送（{{seconds}}s）": {
     zhCN: "重新发送（{{seconds}}s）",
     en: "Resend ({{seconds}}s)",
