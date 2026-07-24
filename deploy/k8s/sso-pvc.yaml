@@ -3,7 +3,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: sso-data
 spec:
-  storageClassName: cephfs
+  storageClassName: rook-cephfs
   accessModes: ["ReadWriteMany"]
   resources:
     requests:

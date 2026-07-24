@@ -4,6 +4,8 @@ namespace: sso
 resources:
   - namespace.yaml
   - sso-configmap.yaml
+  - sso-postgres.yaml
+  - sso-redis.yaml
   - sso-pvc.yaml
   - sso-deployment.yaml
   - sso-pdb.yaml

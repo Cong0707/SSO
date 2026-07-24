@@ -1,6 +1,6 @@
 # new-api 身份迁移运行手册
 
-这份文档描述上线前的身份迁移。new-api 的基础账号系统仍然存在，但会被简化为业务用户投影和本地会话承载层；new-api 的业务用户表、原始 `id`、角色、额度、分组、支付、订阅、工单、日志和业务 Token 不迁入 SSO，也不会被删除或改写。SSO 只接管登录身份、邮箱、第三方绑定、资料、MFA 和全局账号状态。
+这份文档描述上线前的身份迁移。new-api 只保留业务用户投影和本地会话承载层；new-api 的业务用户表、原始 `id`、角色、额度、分组、支付、订阅、工单、日志和业务 Token 不迁入 SSO，也不会被删除或改写。SSO 接管登录身份、密码、邮箱、第三方绑定、资料、MFA 和全局账号状态。new-api 不保留密码登录、注册、找回密码、邮箱验证、第三方登录、绑定、Passkey 或 2FA 的兼容入口。
 
 ## 权威边界
 
@@ -85,9 +85,14 @@ go run ./cmd/migrate-new-api -mode rollback -batch <批次ID>
 ## 切换与回滚
 
 1. 备份 new-api 和 SSO，记录快照水位与迁移批次 ID。
-2. 关闭 new-api 本地密码注册/登录、密码修改、邮箱/第三方绑定和账号合并入口；保留业务用户表、本地 Session、权限、额度和支付链路。
-3. 执行最终 dry-run、import、verify，确认没有错误冲突。
-4. new-api 后端使用 OIDC Authorization Code + S256 PKCE；以稳定 `sub` 查找原有业务用户并建立本地 Session。
-5. SSO 的停用、合并和角色变化通过 outbox webhook 消费；消费方按 `event_id` 幂等，失败进入重试/死信。
-6. 观察登录成功率、映射缺失、事件积压和状态不一致后，再关闭 old auth 回退开关。
-7. 回滚只恢复 new-api 的登录入口和 OIDC 配置，不删除 SSO 账号或 new-api 业务数据。
+2. 执行最终 dry-run、import、verify，确认没有错误冲突。
+3. new-api 后端使用 OIDC Authorization Code + S256 PKCE；以稳定 `sub` 查找原有业务用户并建立本地 Session。
+4. SSO 的停用、合并和角色变化通过 outbox webhook 消费；消费方按 `event_id` 幂等，失败进入重试/死信。
+5. 停止旧版本后启动硬切换版本。启动检查会拒绝任何仍缺少 `sso_subject` 的活动业务用户；映射完成后删除 new-api 的旧密码/第三方 ID 列和旧绑定、OAuth、Passkey、2FA 表。
+6. 确认 `/api/sso/start`、`/api/sso/callback` 和本地业务 Session 正常后开放流量。
+
+### 硬切换边界
+
+- new-api 不提供 old auth 回退开关，也不保留旧认证路由或旧认证页面。
+- 迁移完成后不支持通过恢复旧列、旧表或旧前端来回滚认证；需要回退时只能修复 SSO 配置、映射或事件投递，不得重新启用已删除的认证实现。
+- new-api 的管理员仍可管理业务角色、分组、额度和业务 Token，但不能在 new-api 修改 SSO 资料、密码、邮箱、绑定或 MFA。

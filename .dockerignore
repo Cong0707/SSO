@@ -1,0 +1,10 @@
+.git
+.env
+.playwright-cli
+data
+output
+web/node_modules
+web/dist
+web/tsconfig.tsbuildinfo
+*.log
+*.exe

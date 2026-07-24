@@ -17,18 +17,30 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # Restrict these CIDRs to the PostgreSQL/Redis/SMTP/CAP services in the
-    # cluster overlay. The example keeps only required destination ports.
     - ports:
         - protocol: TCP
           port: 443
         - protocol: TCP
-          port: 5432
-        - protocol: TCP
-          port: 6379
-        - protocol: TCP
           port: 587
         - protocol: TCP
           port: 465
+    - to:
+        - podSelector:
+            matchLabels:
+              postgres-operator.crunchydata.com/cluster: sso-postgres
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: sso-redis-ha
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: new-api
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: cap
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
         - protocol: TCP
           port: 3000

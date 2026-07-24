@@ -1,0 +1,438 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sso-redis-entrypoint
+  namespace: sso
+data:
+  redis-entrypoint.sh: |-
+    #!/bin/sh
+    set -eu
+    config=/data/redis.conf
+    if [ ! -s "$config" ]; then
+      cat > "$config" <<EOF
+    bind 0.0.0.0
+    port 6379
+    protected-mode yes
+    dir /data
+    dbfilename dump.rdb
+    appendonly yes
+    appendfsync everysec
+    appendfilename appendonly.aof
+    requirepass ${REDIS_PASSWORD}
+    masterauth ${REDIS_PASSWORD}
+    replica-read-only yes
+    repl-diskless-sync yes
+    repl-diskless-sync-delay 1
+    tcp-keepalive 60
+    timeout 0
+    EOF
+      case "${HOSTNAME}" in
+        sso-redis-ha-0) ;;
+        *) printf 'replicaof sso-redis-ha-0.sso-redis-ha-headless.sso.svc.cluster.local 6379\n' >> "$config" ;;
+      esac
+    fi
+    sed -i '/^replica-announce-ip /d; /^replica-announce-port /d' "$config"
+    printf 'replica-announce-ip %s.sso-redis-ha-headless.sso.svc.cluster.local\n' "${HOSTNAME}" >> "$config"
+    printf 'replica-announce-port 6379\n' >> "$config"
+    exec redis-server "$config"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sso-redis-ha-headless
+  namespace: sso
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: sso-redis-ha
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sso-redis-ha
+  namespace: sso
+  labels:
+    app.kubernetes.io/name: sso-redis-ha
+spec:
+  serviceName: sso-redis-ha-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sso-redis-ha
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sso-redis-ha
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - cool-bliss-1.localdomain
+                      - ovh-1
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: sso-redis-ha
+                topologyKey: kubernetes.io/hostname
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 60
+      volumes:
+        - name: entrypoint
+          configMap:
+            name: sso-redis-entrypoint
+            defaultMode: 0755
+      containers:
+        - name: redis
+          image: docker.io/library/redis:8.8-alpine
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "/opt/redis/redis-entrypoint.sh"]
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sso-secrets
+                  key: redis-password
+          ports:
+            - name: redis
+              containerPort: 6379
+          startupProbe:
+            exec:
+              command: ["/bin/sh", "-c", "REDISCLI_AUTH=\"$REDIS_PASSWORD\" redis-cli --no-auth-warning ping | grep -qx PONG"]
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "REDISCLI_AUTH=\"$REDIS_PASSWORD\" redis-cli --no-auth-warning ping | grep -qx PONG"]
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "REDISCLI_AUTH=\"$REDIS_PASSWORD\" redis-cli --no-auth-warning ping | grep -qx PONG"]
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: entrypoint
+              mountPath: /opt/redis
+              readOnly: true
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: rook-ceph-block
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sso-redis-sentinel-entrypoint
+  namespace: sso
+data:
+  sentinel-entrypoint.sh: |-
+    #!/bin/sh
+    set -eu
+    master=sso-redis-ha-0.sso-redis-ha-headless.sso.svc.cluster.local
+    for index in 0 1 2; do
+      candidate="sso-redis-ha-${index}.sso-redis-ha-headless.sso.svc.cluster.local"
+      role="$(REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli --no-auth-warning -h "$candidate" INFO replication 2>/dev/null | awk -F: '$1 == "role" {gsub("\r", "", $2); print $2; exit}')" || true
+      if [ "$role" = master ]; then master="$candidate"; break; fi
+    done
+    cat > /tmp/sentinel.conf <<EOF
+    port 26379
+    bind 0.0.0.0
+    protected-mode no
+    dir /tmp
+    sentinel monitor sso ${master} 6379 2
+    sentinel auth-pass sso ${REDIS_PASSWORD}
+    sentinel down-after-milliseconds sso 20000
+    sentinel failover-timeout sso 60000
+    sentinel parallel-syncs sso 1
+    sentinel resolve-hostnames yes
+    sentinel announce-hostnames yes
+    EOF
+    exec redis-server /tmp/sentinel.conf --sentinel
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: sso-redis-sentinel
+  namespace: sso
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sso-redis-sentinel
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sso-redis-sentinel
+    spec:
+      priorityClassName: system-node-critical
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node.kubernetes.io/disk-pressure
+          operator: Exists
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: sentinel
+          image: docker.io/library/redis:8.8-alpine
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "/opt/redis/sentinel-entrypoint.sh"]
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sso-secrets
+                  key: redis-password
+          ports:
+            - name: sentinel
+              containerPort: 26379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "-p", "26379", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "-p", "26379", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: entrypoint
+              mountPath: /opt/redis
+              readOnly: true
+      volumes:
+        - name: entrypoint
+          configMap:
+            name: sso-redis-sentinel-entrypoint
+            defaultMode: 0755
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sso-redis-proxy-config
+  namespace: sso
+data:
+  haproxy.cfg: |-
+    global
+      maxconn 4096
+    defaults
+      mode tcp
+      timeout connect 5s
+      timeout client 1h
+      timeout server 1h
+      timeout check 5s
+    resolvers kube
+      nameserver dns 10.96.0.10:53
+      resolve_retries 3
+      timeout resolve 1s
+      timeout retry 1s
+      hold valid 10s
+    frontend redis
+      bind :6379
+      default_backend redis-master
+    backend redis-master
+      option tcp-check
+      tcp-check connect
+      tcp-check send "AUTH __REDIS_PASSWORD__\r\n"
+      tcp-check expect string +OK
+      tcp-check send "INFO replication\r\nQUIT\r\n"
+      tcp-check expect string role:master
+      default-server resolvers kube init-addr libc,none inter 1s fall 2 rise 1
+      server redis-0 sso-redis-ha-0.sso-redis-ha-headless.sso.svc.cluster.local:6379 check
+      server redis-1 sso-redis-ha-1.sso-redis-ha-headless.sso.svc.cluster.local:6379 check
+      server redis-2 sso-redis-ha-2.sso-redis-ha-headless.sso.svc.cluster.local:6379 check
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sso-redis-primary
+  namespace: sso
+spec:
+  selector:
+    app.kubernetes.io/name: sso-redis-proxy
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sso-redis-proxy
+  namespace: sso
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sso-redis-proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sso-redis-proxy
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - cool-bliss-1.localdomain
+                      - ovh-1
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: sso-redis-proxy
+              topologyKey: kubernetes.io/hostname
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      initContainers:
+        - name: render-config
+          image: docker.io/library/busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - sed "s|__REDIS_PASSWORD__|${REDIS_PASSWORD}|g" /template/haproxy.cfg > /generated/haproxy.cfg; printf '\n' >> /generated/haproxy.cfg
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sso-secrets
+                  key: redis-password
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: template
+              mountPath: /template
+            - name: generated
+              mountPath: /generated
+      containers:
+        - name: haproxy
+          image: haproxy:3.2-alpine
+          imagePullPolicy: IfNotPresent
+          args: ["-W", "-db", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-ec", "response=\"$(printf 'AUTH %s\\r\\nPING\\r\\n' \"${REDIS_PASSWORD}\" | nc -w 3 127.0.0.1 6379)\"; printf '%s\\n' \"${response}\" | grep -q '+PONG'"]
+            periodSeconds: 5
+            timeoutSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: redis
+            periodSeconds: 10
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sso-secrets
+                  key: redis-password
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 99
+            runAsGroup: 99
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: generated
+              mountPath: /usr/local/etc/haproxy
+              readOnly: true
+      volumes:
+        - name: template
+          configMap:
+            name: sso-redis-proxy-config
+        - name: generated
+          emptyDir: {}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sso-redis-proxy
+  namespace: sso
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sso-redis-proxy
