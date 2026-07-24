@@ -36,8 +36,8 @@ func TestMergeAccountsPreservesSourceAndMovesBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 	identities := []model.UpstreamIdentity{
-		{UserID: first.ID, ProviderID: provider.ID, ExternalID: "github-1", LastLoginAt: now},
-		{UserID: second.ID, ProviderID: provider.ID, ExternalID: "github-2", LastLoginAt: now},
+		{UserID: first.ID, ProviderID: provider.ID, ExternalID: "github-1", VerifiedAt: &now, LastLoginAt: now},
+		{UserID: second.ID, ProviderID: provider.ID, ExternalID: "github-2", VerifiedAt: &now, LastLoginAt: now},
 	}
 	if err := db.Create(&identities).Error; err != nil {
 		t.Fatal(err)

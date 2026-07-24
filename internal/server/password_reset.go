@@ -38,7 +38,7 @@ func (s *Server) passwordResetPrepare(c *gin.Context) {
 	var user model.User
 	findErr := s.DB.
 		Joins("JOIN user_emails ON user_emails.user_id = users.id").
-		Where("user_emails.normalized_email = ? AND user_emails.verified_at IS NOT NULL AND users.status = ?", email, "active").
+		Where("user_emails.normalized_email = ? AND users.status = ?", email, "active").
 		Order("user_emails.id ASC").
 		First(&user).Error
 	if findErr != nil && !errors.Is(findErr, gorm.ErrRecordNotFound) {
@@ -136,7 +136,7 @@ func (s *Server) passwordResetComplete(c *gin.Context) {
 		}
 		var verifiedEmailCount int64
 		if err := tx.Model(&model.UserEmail{}).
-			Where("user_id = ? AND normalized_email = ? AND verified_at IS NOT NULL", user.ID, flow.Email).
+			Where("user_id = ? AND normalized_email = ?", user.ID, flow.Email).
 			Count(&verifiedEmailCount).Error; err != nil || verifiedEmailCount != 1 {
 			if err != nil {
 				return err

@@ -87,10 +87,8 @@ func (s *Server) prepareProfileEmail(c *gin.Context) {
 			s.serveError(c, http.StatusConflict, "邮箱已被使用")
 			return
 		}
-		if existing.VerifiedAt != nil {
-			s.serveError(c, http.StatusConflict, "邮箱已经验证")
-			return
-		}
+		s.serveError(c, http.StatusConflict, "邮箱已经绑定")
+		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		s.serveError(c, http.StatusInternalServerError, "读取邮箱绑定失败")
 		return
@@ -154,9 +152,6 @@ func (s *Server) completeProfileEmail(c *gin.Context) {
 			if email.UserID != user.ID {
 				return fmt.Errorf("邮箱已被使用")
 			}
-			if err := tx.Model(&email).Updates(map[string]any{"email": flow.Email, "verified_at": &now}).Error; err != nil {
-				return err
-			}
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			email = model.UserEmail{UserID: user.ID, Email: flow.Email, NormalizedEmail: flow.Email, VerifiedAt: &now}
 			if err := tx.Create(&email).Error; err != nil {
@@ -165,7 +160,8 @@ func (s *Server) completeProfileEmail(c *gin.Context) {
 		} else {
 			return err
 		}
-		return nil
+		return tx.Where("user_id = ? AND kind = ? AND normalized_identifier = ?", user.ID, "email", flow.Email).
+			Delete(&model.LegacyLoginIdentifier{}).Error
 	})
 	if err != nil {
 		s.serveError(c, http.StatusConflict, "邮箱已被使用")

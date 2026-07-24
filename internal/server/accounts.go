@@ -17,7 +17,7 @@ func (s *Server) findUserByEmail(email string) (model.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	var verifiedIDs []uint64
 	if err := s.DB.Model(&model.UserEmail{}).
-		Where("normalized_email = ? AND verified_at IS NOT NULL", email).
+		Where("normalized_email = ?", email).
 		Pluck("user_id", &verifiedIDs).Error; err != nil {
 		return model.User{}, err
 	}
@@ -30,13 +30,6 @@ func (s *Server) findUserByEmail(email string) (model.User, error) {
 	}
 	ids := make(map[uint64]struct{})
 	var values []uint64
-	if err := s.DB.Model(&model.UserEmail{}).Where("normalized_email = ?", email).Pluck("user_id", &values).Error; err != nil {
-		return model.User{}, err
-	}
-	for _, id := range values {
-		ids[id] = struct{}{}
-	}
-	values = nil
 	if err := s.DB.Model(&model.LegacyLoginIdentifier{}).
 		Where("kind = ? AND normalized_identifier = ?", "email", email).
 		Pluck("user_id", &values).Error; err != nil {

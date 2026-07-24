@@ -40,7 +40,7 @@ func TestMigrationImportVerifyAndRollback(t *testing.T) {
 	}
 	targetSQL, _ := target.DB()
 	t.Cleanup(func() { _ = targetSQL.Close() })
-	runner, err := New(target, targetCfg, Options{SourceDriver: "sqlite", SourceDSN: sourcePath, Limit: 100})
+	runner, err := New(target, targetCfg, Options{SourceDriver: "sqlite", SourceDSN: sourcePath, Limit: 100, TrustSourceEmails: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,6 +140,60 @@ func TestDuplicateLegacyEmailIsPreservedWithoutBlockingImport(t *testing.T) {
 	verified, err := runner.Verify(imported.BatchID)
 	if err != nil || verified.Verified != 2 || len(verified.Issues) != 0 {
 		t.Fatalf("duplicate email verify failed: result=%#v err=%v", verified, err)
+	}
+}
+
+func TestUntrustedSourceEmailIsNotImportedAsBinding(t *testing.T) {
+	temp := t.TempDir()
+	sourcePath := filepath.Join(temp, "source.db")
+	source, err := gorm.Open(sqlite.Open(sourcePath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceSQL, _ := source.DB()
+	t.Cleanup(func() { _ = sourceSQL.Close() })
+	if err := source.Table("users").AutoMigrate(&SourceUser{}); err != nil {
+		t.Fatal(err)
+	}
+	password, _ := bcrypt.GenerateFromPassword([]byte("Password123"), bcrypt.DefaultCost)
+	legacy := SourceUser{ID: 3, Username: "legacy-email", Password: string(password), Status: 1, Email: "legacy@example.com"}
+	if err := source.Table("users").Create(&legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+	targetCfg := config.Config{DatabaseDriver: "sqlite", DatabaseDSN: filepath.Join(temp, "target.db"), BootstrapAdminEmails: []string{"legacy@example.com"}}
+	target, err := model.Open(targetCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetSQL, _ := target.DB()
+	t.Cleanup(func() { _ = targetSQL.Close() })
+	runner, err := New(target, targetCfg, Options{SourceDriver: "sqlite", SourceDSN: sourcePath, Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runnerSourceSQL, _ := runner.Source.DB()
+	t.Cleanup(func() { _ = runnerSourceSQL.Close() })
+	imported, err := runner.Import()
+	if err != nil || imported.Imported != 1 {
+		t.Fatalf("import untrusted source email: result=%#v err=%v", imported, err)
+	}
+	var user model.User
+	if err := target.Where("username = ?", legacy.Username).First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	if user.Role != "user" {
+		t.Fatalf("untrusted source email granted administrator access: %#v", user)
+	}
+	var emailCount, legacyCount int64
+	if err := target.Model(&model.UserEmail{}).Where("user_id = ?", user.ID).Count(&emailCount).Error; err != nil || emailCount != 0 {
+		t.Fatalf("untrusted email became a formal binding: count=%d err=%v", emailCount, err)
+	}
+	if err := target.Model(&model.LegacyLoginIdentifier{}).Where("user_id = ? AND normalized_identifier = ?", user.ID, "legacy@example.com").Count(&legacyCount).Error; err != nil || legacyCount != 1 {
+		t.Fatalf("untrusted email was not preserved as a legacy login identifier: count=%d err=%v", legacyCount, err)
+	}
+	verified, err := runner.Verify(imported.BatchID)
+	if err != nil || verified.Verified != 1 || len(verified.Issues) != 0 {
+		t.Fatalf("verify untrusted source email import: result=%#v err=%v", verified, err)
 	}
 }
 

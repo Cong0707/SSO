@@ -2676,9 +2676,7 @@ function ProfilePage({
                       )}
                     </div>
                     <div className="binding-badges">
-                      <Badge tone={binding.verified ? "success" : "warning"}>
-                        {binding.verified ? tr("已验证") : tr("未验证")}
-                      </Badge>
+                      <Badge tone="success">{tr("已验证")}</Badge>
                       <button
                         type="button"
                         className="icon-button danger-icon"
@@ -3622,9 +3620,7 @@ function AdminUsersPage({
                         </span>
                       </div>
                       <div className="binding-badges">
-                        <Badge tone={binding.verified ? "success" : "warning"}>
-                          {binding.verified ? tr("已验证") : tr("未验证")}
-                        </Badge>
+                        <Badge tone="success">{tr("已验证")}</Badge>
                         <button
                           type="button"
                           className="icon-button danger-icon"

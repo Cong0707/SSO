@@ -296,10 +296,7 @@ func (s *Server) upstreamCallback(c *gin.Context) {
 	}
 	identity := model.UpstreamIdentity{
 		UserID: user.ID, ProviderID: providerRecord.ID, ExternalID: identityData.Subject,
-		ExternalName: externalName, ExternalEmail: strings.ToLower(strings.TrimSpace(identityData.Email)), LastLoginAt: now,
-	}
-	if identityData.EmailVerified {
-		identity.VerifiedAt = &now
+		ExternalName: externalName, ExternalEmail: strings.ToLower(strings.TrimSpace(identityData.Email)), VerifiedAt: &now, LastLoginAt: now,
 	}
 	if err := s.DB.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "provider_id"}, {Name: "external_id"}},

@@ -263,7 +263,7 @@ func (s *Server) userBindingViews(userID uint64) []userBindingView {
 	for _, email := range emails {
 		items = append(items, userBindingView{
 			Kind: "email", DisplayName: "邮箱", Identifier: email.Email, BindingType: "email", BindingID: email.ID,
-			Verified: email.VerifiedAt != nil, CreatedAt: email.CreatedAt,
+			Verified: true, CreatedAt: email.CreatedAt,
 		})
 	}
 	var identities []model.UpstreamIdentity
@@ -277,7 +277,7 @@ func (s *Server) userBindingViews(userID uint64) []userBindingView {
 		items = append(items, userBindingView{
 			Kind: identity.Provider.Kind, DisplayName: identity.Provider.DisplayName, Identifier: identity.ExternalID,
 			AccountName: identity.ExternalName, Email: identity.ExternalEmail, BindingType: "upstream", BindingID: identity.ID,
-			Verified: identity.VerifiedAt != nil, CreatedAt: identity.CreatedAt, LastLoginAt: lastLoginAt,
+			Verified: true, CreatedAt: identity.CreatedAt, LastLoginAt: lastLoginAt,
 		})
 	}
 	return items

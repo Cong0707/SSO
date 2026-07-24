@@ -3,12 +3,13 @@ package model
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion uint64 = 2
+const CurrentSchemaVersion uint64 = 3
 
 type User struct {
 	ID                   uint64     `gorm:"primaryKey" json:"id"`
@@ -39,7 +40,7 @@ type UserEmail struct {
 	UserID          uint64     `gorm:"not null;index" json:"user_id"`
 	Email           string     `gorm:"size:254;not null" json:"email"`
 	NormalizedEmail string     `gorm:"size:254;uniqueIndex;not null" json:"-"`
-	VerifiedAt      *time.Time `gorm:"index" json:"verified_at"`
+	VerifiedAt      *time.Time `gorm:"not null;index" json:"verified_at"`
 	User            User       `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
 }
 
@@ -225,7 +226,7 @@ type UpstreamIdentity struct {
 	ExternalName  string           `gorm:"size:255" json:"external_name"`
 	ExternalEmail string           `gorm:"size:254" json:"external_email"`
 	Metadata      string           `gorm:"type:text" json:"metadata,omitempty"`
-	VerifiedAt    *time.Time       `gorm:"index" json:"verified_at"`
+	VerifiedAt    *time.Time       `gorm:"not null;index" json:"verified_at"`
 	LastLoginAt   time.Time        `json:"last_login_at"`
 	Provider      UpstreamProvider `gorm:"foreignKey:ProviderID" json:"provider"`
 	User          User             `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
@@ -331,6 +332,9 @@ type IdentityMigrationConflict struct {
 }
 
 func Migrate(db *gorm.DB) error {
+	if err := migrateVerifiedBindings(db); err != nil {
+		return err
+	}
 	if err := db.AutoMigrate(
 		&User{},
 		&UserEmail{},
@@ -358,6 +362,9 @@ func Migrate(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
+	if err := enforceVerifiedBindingConstraints(db); err != nil {
+		return err
+	}
 	if err := migrateLegacyBackupCodes(db); err != nil {
 		return err
 	}
@@ -369,6 +376,108 @@ func Migrate(db *gorm.DB) error {
 		}
 		return err
 	})
+}
+
+func migrateVerifiedBindings(db *gorm.DB) error {
+	hasEmails := db.Migrator().HasTable(&UserEmail{})
+	hasIdentities := db.Migrator().HasTable(&UpstreamIdentity{})
+	if !hasEmails && !hasIdentities {
+		return nil
+	}
+	if hasEmails && !db.Migrator().HasTable(&LegacyLoginIdentifier{}) {
+		if err := db.AutoMigrate(&LegacyLoginIdentifier{}); err != nil {
+			return fmt.Errorf("create legacy login identifier table: %w", err)
+		}
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		if hasEmails {
+			var emails []UserEmail
+			if err := tx.Where("verified_at IS NULL").Order("id ASC").Find(&emails).Error; err != nil {
+				return fmt.Errorf("find unverified email bindings: %w", err)
+			}
+			for _, email := range emails {
+				if email.ID > uint64(1<<63-1) {
+					return fmt.Errorf("email binding id %d cannot be converted to a legacy source id", email.ID)
+				}
+				createdAt := email.CreatedAt
+				if createdAt.IsZero() {
+					createdAt = time.Now().UTC()
+				}
+				legacy := LegacyLoginIdentifier{
+					CreatedAt: createdAt, UserID: email.UserID, Kind: "email", Identifier: email.Email,
+					NormalizedIdentifier: email.NormalizedEmail, SourceSystem: "sso-unverified-email-v2", SourceUserID: int64(email.ID),
+				}
+				if err := tx.Where("source_system = ? AND source_user_id = ? AND kind = ?", legacy.SourceSystem, legacy.SourceUserID, legacy.Kind).
+					FirstOrCreate(&legacy).Error; err != nil {
+					return fmt.Errorf("preserve unverified email binding %d: %w", email.ID, err)
+				}
+				if err := tx.Delete(&email).Error; err != nil {
+					return fmt.Errorf("remove unverified email binding %d: %w", email.ID, err)
+				}
+			}
+		}
+		if hasIdentities {
+			var identities []UpstreamIdentity
+			if err := tx.Where("verified_at IS NULL").Order("id ASC").Find(&identities).Error; err != nil {
+				return fmt.Errorf("find unverified upstream identities: %w", err)
+			}
+			for _, identity := range identities {
+				verifiedAt := identity.CreatedAt
+				if verifiedAt.IsZero() {
+					verifiedAt = time.Now().UTC()
+				}
+				if err := tx.Model(&identity).UpdateColumn("verified_at", &verifiedAt).Error; err != nil {
+					return fmt.Errorf("verify upstream identity %d: %w", identity.ID, err)
+				}
+			}
+		}
+		return nil
+	})
+}
+
+func enforceVerifiedBindingConstraints(db *gorm.DB) error {
+	for _, item := range []struct {
+		model  any
+		field  string
+		column string
+	}{
+		{model: &UserEmail{}, field: "VerifiedAt", column: "verified_at"},
+		{model: &UpstreamIdentity{}, field: "VerifiedAt", column: "verified_at"},
+	} {
+		nullable, known, err := columnNullable(db, item.model, item.column)
+		if err != nil {
+			return err
+		}
+		if known && !nullable {
+			continue
+		}
+		if err := db.Migrator().AlterColumn(item.model, item.field); err != nil {
+			return fmt.Errorf("make %T.%s non-null: %w", item.model, item.field, err)
+		}
+		nullable, known, err = columnNullable(db, item.model, item.column)
+		if err != nil {
+			return err
+		}
+		if known && nullable {
+			return fmt.Errorf("column %s remains nullable after migration", item.column)
+		}
+	}
+	return nil
+}
+
+func columnNullable(db *gorm.DB, value any, column string) (bool, bool, error) {
+	columns, err := db.Migrator().ColumnTypes(value)
+	if err != nil {
+		return false, false, fmt.Errorf("read column metadata for %T: %w", value, err)
+	}
+	for _, item := range columns {
+		if item.Name() != column {
+			continue
+		}
+		nullable, known := item.Nullable()
+		return nullable, known, nil
+	}
+	return false, false, fmt.Errorf("column %s is missing from %T", column, value)
 }
 
 // SchemaReady only performs reads and is safe to call from readiness probes.

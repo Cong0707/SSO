@@ -6,7 +6,8 @@
 
 | 数据 | 权威系统 |
 | --- | --- |
-| 密码与邮箱 | SSO `users`、`user_emails` |
+| 密码与已确认邮箱 | SSO `users`、`user_emails` |
+| 尚未独立确认的源邮箱 | SSO `legacy_login_identifiers`，仅用于迁移兼容登录，不作为账号绑定 |
 | GitHub/Discord/OIDC/LinuxDO/Telegram/微信绑定 | SSO `upstream_identities` |
 | 显示名、头像、语言、MFA、账号注销/合并 | SSO |
 | new-api 用户主键、角色 1/10/100、分组、额度、钱包、订阅、支付、业务 Token | new-api |
@@ -20,7 +21,7 @@ new-api 接入 SSO 后仍负责建立自己的业务 Session、权限判断、�
 - `users.id`：写入 SSO 迁移映射表，不复用为 SSO 主键。
 - `username`：保留源值；源模型限制为 20 字符，SSO 接受 ASCII 3-64 字符。重复或非法值进入冲突报告，不自动改名。
 - `password`：仅接受 bcrypt 摘要，原摘要导入；首次成功登录后由 SSO 升级 Argon2id。空密码账号要求通过已绑定的第三方身份登录后设置密码。
-- `email`：写入 `user_emails`，统一 `lower(trim())`；源库没有可靠的验证时间时默认未验证，重复邮箱停止该用户导入。只有已通过独立数据核验时才可使用 `-trust-source-emails`。
+- `email`：统一 `lower(trim())`。只有使用 `-trust-source-emails` 明确确认所有权后才写入 `user_emails`；否则写入 `legacy_login_identifiers`，不显示为账号绑定，也不进入 OIDC 邮箱 claims。重复邮箱同样只保留为迁移兼容登录标识。
 - `github_id`、`discord_id`、`oidc_id`、`linux_do_id`、`telegram_id`、`wechat_id`：写入平等的 `upstream_identities`。OIDC 必须显式提供 issuer，不能只凭数字 subject 判断全局唯一。
 - `status`、软删除：启用映射为 `active`，其它状态或 `deleted_at` 非空映射为 `deactivated`。注销数据保留，不能重新登录。
 - `role`：new-api 的 1/10/100 仍由 new-api 保存。SSO 只有在 `SSO_BOOTSTRAP_ADMIN_EMAILS` 明确列出已验证邮箱时才授予 `admin`，不会把 100 自动提升成 SSO 管理员。

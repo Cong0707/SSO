@@ -1808,15 +1808,6 @@
     "vi": "Chưa bật, cấu hình được đề xuất",
     "zhTW": "未啟用，建議配置"
   },
-  "未验证": {
-    "zhCN": "未验证",
-    "en": "Not verified",
-    "fr": "Non vérifié",
-    "ru": "Не проверено",
-    "ja": "未検証",
-    "vi": "Chưa được xác minh",
-    "zhTW": "未驗證"
-  },
   "我的应用": {
     "zhCN": "我的应用",
     "en": "My application",

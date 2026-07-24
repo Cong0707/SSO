@@ -429,7 +429,7 @@ func (s *Server) oidcExtensionFields(info oauth2.TokenInfo) map[string]interface
 
 func (s *Server) emailClaims(userID uint64) map[string]interface{} {
 	var emails []string
-	_ = s.DB.Model(&model.UserEmail{}).Where("user_id = ? AND verified_at IS NOT NULL", userID).Order("id ASC").Pluck("email", &emails).Error
+	_ = s.DB.Model(&model.UserEmail{}).Where("user_id = ?", userID).Order("id ASC").Pluck("email", &emails).Error
 	claims := map[string]interface{}{"emails": emails}
 	if len(emails) > 0 {
 		claims["email"] = emails[0]

@@ -74,7 +74,8 @@ func TestUserCannotDeleteLastBinding(t *testing.T) {
 	if err := db.Create(&provider).Error; err != nil {
 		t.Fatal(err)
 	}
-	identity := model.UpstreamIdentity{UserID: user.ID, ProviderID: provider.ID, ExternalID: "only-login", LastLoginAt: time.Now()}
+	now := time.Now()
+	identity := model.UpstreamIdentity{UserID: user.ID, ProviderID: provider.ID, ExternalID: "only-login", VerifiedAt: &now, LastLoginAt: now}
 	if err := db.Create(&identity).Error; err != nil {
 		t.Fatal(err)
 	}

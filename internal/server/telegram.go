@@ -102,7 +102,8 @@ func (s *Server) resolveUpstreamUser(provider model.UpstreamProvider, identity u
 	if err != nil {
 		return model.User{}, err
 	}
-	if err := s.DB.Create(&model.UpstreamIdentity{UserID: user.ID, ProviderID: provider.ID, ExternalID: identity.Subject, ExternalName: identity.Name, ExternalEmail: identity.Email, LastLoginAt: time.Now()}).Error; err != nil {
+	now := time.Now()
+	if err := s.DB.Create(&model.UpstreamIdentity{UserID: user.ID, ProviderID: provider.ID, ExternalID: identity.Subject, ExternalName: identity.Name, ExternalEmail: identity.Email, VerifiedAt: &now, LastLoginAt: now}).Error; err != nil {
 		return model.User{}, err
 	}
 	return user, nil

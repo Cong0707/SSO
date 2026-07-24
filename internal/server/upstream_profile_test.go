@@ -86,6 +86,23 @@ func TestSyncUpstreamProfileAddsVerifiedEmailBinding(t *testing.T) {
 	}
 }
 
+func TestSuccessfulUpstreamAuthenticationCreatesVerifiedBinding(t *testing.T) {
+	db := openTestDatabase(t)
+	application := &Server{DB: db, Cfg: config.Config{RegistrationEnabled: true}}
+	provider := model.UpstreamProvider{Kind: "telegram", DisplayName: "Telegram"}
+	if err := db.Create(&provider).Error; err != nil {
+		t.Fatal(err)
+	}
+	user, err := application.resolveUpstreamUser(provider, upstream.Identity{Subject: "telegram-100", Username: "telegram-user"})
+	if err != nil {
+		t.Fatalf("resolve upstream user: %v", err)
+	}
+	var binding model.UpstreamIdentity
+	if err := db.Where("user_id = ? AND provider_id = ? AND external_id = ?", user.ID, provider.ID, "telegram-100").First(&binding).Error; err != nil || binding.VerifiedAt == nil {
+		t.Fatalf("successful upstream authentication did not create a verified binding: binding=%#v err=%v", binding, err)
+	}
+}
+
 func TestDatabaseTokenStoreEncryptsPayloadAndSharesLookupState(t *testing.T) {
 	db := openTestDatabase(t)
 	user := model.User{Username: "token-user", PasswordHash: "unused", Locale: "en", Role: "user", Status: "active"}

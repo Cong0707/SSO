@@ -302,7 +302,7 @@ func (r *Runner) Verify(batchID string) (Result, error) {
 		expectedUsername, _ := migratedUsername(sourceUser)
 		passwordMismatch := !passwordStateMatches(sourceUser, targetUser, mapping.CreatedAt)
 		expectedRole := "user"
-		if bootstrapAdmin(r.Cfg, normalizeEmail(sourceUser.Email)) {
+		if r.Opts.TrustSourceEmails && bootstrapAdmin(r.Cfg, normalizeEmail(sourceUser.Email)) {
 			expectedRole = "admin"
 		}
 		if targetUser.Username != expectedUsername || targetUser.DisplayName != expectedDisplayName || passwordMismatch || targetUser.Status != sourceStatus(sourceUser) || targetUser.Role != expectedRole {
@@ -311,7 +311,7 @@ func (r *Runner) Verify(batchID string) (Result, error) {
 		}
 		email := normalizeEmail(sourceUser.Email)
 		if email != "" {
-			if validEmail(email) && !duplicateEmails[email] {
+			if validEmail(email) && !duplicateEmails[email] && r.Opts.TrustSourceEmails {
 				if !emailsByUser[targetUser.ID][email] {
 					result.Issues = append(result.Issues, Issue{SourceUserID: mapping.SourceUserID, Severity: "error", Kind: "email_mapping_missing", Detail: email})
 					continue
@@ -637,7 +637,7 @@ func (r *Runner) importUser(batchID string, sourceUser SourceUser, duplicateEmai
 		if user.DisplayName == "" {
 			user.DisplayName = user.Username
 		}
-		if email != "" && bootstrapAdmin(r.Cfg, email) {
+		if email != "" && r.Opts.TrustSourceEmails && bootstrapAdmin(r.Cfg, email) {
 			user.Role = "admin"
 		}
 		if sourceUser.LastLoginAt > 0 {
@@ -668,13 +668,9 @@ func (r *Runner) importUser(batchID string, sourceUser SourceUser, duplicateEmai
 			}
 			user.PasswordConfigured = false
 		}
-		if email != "" && validEmail(email) && !duplicateEmail {
-			var verifiedAt *time.Time
-			if r.Opts.TrustSourceEmails {
-				verified := createdAt
-				verifiedAt = &verified
-			}
-			if err := tx.Create(&model.UserEmail{UserID: user.ID, Email: email, NormalizedEmail: email, VerifiedAt: verifiedAt}).Error; err != nil {
+		if email != "" && validEmail(email) && !duplicateEmail && r.Opts.TrustSourceEmails {
+			verifiedAt := createdAt
+			if err := tx.Create(&model.UserEmail{UserID: user.ID, Email: email, NormalizedEmail: email, VerifiedAt: &verifiedAt}).Error; err != nil {
 				return err
 			}
 		} else if email != "" {
@@ -690,7 +686,8 @@ func (r *Runner) importUser(batchID string, sourceUser SourceUser, duplicateEmai
 			if err != nil {
 				return err
 			}
-			if err := tx.Create(&model.UpstreamIdentity{UserID: user.ID, ProviderID: provider.ID, ExternalID: identity.Subject, ExternalName: sourceUser.Username, ExternalEmail: email, LastLoginAt: createdAt}).Error; err != nil {
+			verifiedAt := createdAt
+			if err := tx.Create(&model.UpstreamIdentity{UserID: user.ID, ProviderID: provider.ID, ExternalID: identity.Subject, ExternalName: sourceUser.Username, ExternalEmail: email, VerifiedAt: &verifiedAt, LastLoginAt: createdAt}).Error; err != nil {
 				return err
 			}
 		}
