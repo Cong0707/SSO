@@ -1196,15 +1196,6 @@
     "vi": "Khả năng",
     "zhTW": "能力"
   },
-  "你": {
-    "zhCN": "你",
-    "en": "you",
-    "fr": "vous",
-    "ru": "ты",
-    "ja": "あなた",
-    "vi": "bạn",
-    "zhTW": "你"
-  },
   "配置可用于客户登录和绑定的上游身份提供商。": {
     "zhCN": "配置可用于客户登录和绑定的上游身份提供商。",
     "en": "Configure an upstream identity provider that can be used for customer login and binding.",

@@ -522,7 +522,7 @@ function PageRouter(props: {
         show={props.show}
       />
     );
-  return <DashboardPage t={props.t} show={props.show} />;
+  return <DashboardPage user={props.user} t={props.t} show={props.show} />;
 }
 function Avatar({
   user,
@@ -1432,9 +1432,11 @@ function ProviderIcon({ kind }: { kind: string }) {
   return <Shield size={17} />;
 }
 function DashboardPage({
+  user,
   t,
   show,
 }: {
+  user: User;
   t: T;
   show: (message: string, tone?: Toast["tone"]) => void;
 }) {
@@ -1497,7 +1499,7 @@ function DashboardPage({
             rows={
               data?.recent_authorizations?.map((item) => [
                 <strong key="app">{item.app?.name || tr("应用")}</strong>,
-                tr("你"),
+                <strong key="user">{user.username}</strong>,
                 <code key="scope">{item.scopes || "openid"}</code>,
                 formatDate(item.created_at),
                 <Badge
