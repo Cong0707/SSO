@@ -697,6 +697,26 @@ function formatDate(value?: string) {
     timeStyle: "short",
   }).format(new Date(value));
 }
+
+function safeLocalReturnTo(value: string) {
+  const fallback = "/dashboard";
+  const candidate = value.trim();
+  if (
+    !candidate.startsWith("/") ||
+    candidate.startsWith("//") ||
+    candidate.includes("\\")
+  ) {
+    return fallback;
+  }
+  try {
+    const parsed = new URL(candidate, window.location.origin);
+    if (parsed.origin !== window.location.origin) return fallback;
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return fallback;
+  }
+}
+
 function AuthPage(props: {
   mode: "login" | "register";
   locale: LocaleCode;
@@ -705,7 +725,6 @@ function AuthPage(props: {
   t: T;
   show: (message: string, tone?: Toast["tone"]) => void;
 }) {
-  const navigate = useNavigate();
   const [params] = useSearchParams();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [flowMode, setFlowMode] = useState<"login" | "register" | null>(null);
@@ -853,7 +872,9 @@ function AuthPage(props: {
   async function finish(user: User, csrf: string) {
     setCsrf(csrf);
     await props.onUser(user);
-    navigate(mergeToken ? "/profile?merged=1" : requestedReturnTo);
+    window.location.assign(
+      mergeToken ? "/profile?merged=1" : safeLocalReturnTo(requestedReturnTo),
+    );
   }
   async function resend() {
     if (countdown > 0 || busy) return;
@@ -1275,8 +1296,7 @@ function ForgotPasswordPage(props: {
               <Button
                 type="submit"
                 disabled={
-                  busy ||
-                  (authConfig.captcha.mode !== "none" && !captchaToken)
+                  busy || (authConfig.captcha.mode !== "none" && !captchaToken)
                 }
                 icon={<Mail size={16} />}
               >
@@ -1329,7 +1349,11 @@ function ForgotPasswordPage(props: {
               >
                 {tr("返回")}
               </Button>
-              <Button type="submit" disabled={busy} icon={<KeyRound size={16} />}>
+              <Button
+                type="submit"
+                disabled={busy}
+                icon={<KeyRound size={16} />}
+              >
                 {tr("设置新密码")}
               </Button>
             </div>
