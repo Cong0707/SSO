@@ -7,8 +7,11 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+      # Exactly two eligible nodes are combined with required pod anti-affinity.
+      # Replace one Pod at a time so a third unschedulable surge Pod cannot
+      # deadlock the rollout while the other replica remains available.
+      maxUnavailable: 1
+      maxSurge: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: sso
