@@ -84,29 +84,46 @@ func VerifyPassword(encoded, password string) bool {
 	if strings.HasPrefix(encoded, "$2a$") || strings.HasPrefix(encoded, "$2b$") || strings.HasPrefix(encoded, "$2y$") {
 		return bcrypt.CompareHashAndPassword([]byte(encoded), []byte(password)) == nil
 	}
+	memory, iterations, threads, salt, want, ok := parseArgon2Hash(encoded)
+	if !ok {
+		return false
+	}
+	got := argon2.IDKey([]byte(password), salt, iterations, memory, threads, uint32(len(want)))
+	return subtle.ConstantTimeCompare(want, got) == 1
+}
+
+func ValidPasswordHashEncoding(encoded string) bool {
+	if strings.HasPrefix(encoded, "$2a$") || strings.HasPrefix(encoded, "$2b$") || strings.HasPrefix(encoded, "$2y$") {
+		_, err := bcrypt.Cost([]byte(encoded))
+		return err == nil
+	}
+	_, _, _, _, _, ok := parseArgon2Hash(encoded)
+	return ok
+}
+
+func parseArgon2Hash(encoded string) (uint32, uint32, uint8, []byte, []byte, bool) {
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" || parts[2] != "v=19" {
-		return false
+		return 0, 0, 0, nil, nil, false
 	}
 	var memory uint32
 	var iterations uint32
 	var threads uint8
 	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &iterations, &threads); err != nil {
-		return false
+		return 0, 0, 0, nil, nil, false
 	}
-	if memory > 256*1024 || iterations > 10 || threads > 16 {
-		return false
+	if memory == 0 || iterations == 0 || threads == 0 || memory > 256*1024 || iterations > 10 || threads > 16 {
+		return 0, 0, 0, nil, nil, false
 	}
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
-	if err != nil {
-		return false
+	if err != nil || len(salt) == 0 {
+		return 0, 0, 0, nil, nil, false
 	}
 	want, err := base64.RawStdEncoding.DecodeString(parts[5])
 	if err != nil || len(want) == 0 {
-		return false
+		return 0, 0, 0, nil, nil, false
 	}
-	got := argon2.IDKey([]byte(password), salt, iterations, memory, threads, uint32(len(want)))
-	return subtle.ConstantTimeCompare(want, got) == 1
+	return memory, iterations, threads, salt, want, true
 }
 
 func Encrypt(key []byte, plaintext string) (string, error) {

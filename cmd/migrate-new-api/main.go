@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "dry-run", "dry-run, import, verify, or rollback")
+	mode := flag.String("mode", "dry-run", "dry-run, import, repair-password-state, verify, or rollback")
 	sourceDriver := flag.String("source-driver", os.Getenv("NEW_API_DATABASE_DRIVER"), "source database driver: postgres, mysql, sqlite")
 	sourceDSN := flag.String("source-dsn", os.Getenv("NEW_API_DATABASE_DSN"), "source database DSN")
 	batchID := flag.String("batch", "", "migration batch ID; import generates one when omitted")
@@ -48,6 +48,8 @@ func main() {
 		result, err = runner.DryRun()
 	case "import":
 		result, err = runner.Import()
+	case "repair-password-state":
+		result, err = runner.RepairPasswordState(*batchID)
 	case "verify":
 		result, err = runner.Verify(*batchID)
 	case "rollback":

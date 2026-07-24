@@ -7,6 +7,7 @@ import (
 
 	"github.com/Cong0707/sso/internal/config"
 	"github.com/Cong0707/sso/internal/model"
+	"github.com/Cong0707/sso/internal/security"
 	"github.com/glebarez/sqlite"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -188,6 +189,128 @@ func TestLegacyUnicodeUsernameAndPasswordOnlyAccountRemainUsable(t *testing.T) {
 	var user model.User
 	if err := target.Where("username = ?", "鱼").First(&user).Error; err != nil || !user.PasswordConfigured {
 		t.Fatalf("legacy username was not preserved: user=%#v err=%v", user, err)
+	}
+}
+
+func TestPasswordlessProviderAccountRemainsPasswordless(t *testing.T) {
+	temp := t.TempDir()
+	sourcePath := filepath.Join(temp, "source.db")
+	source, err := gorm.Open(sqlite.Open(sourcePath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceSQL, _ := source.DB()
+	t.Cleanup(func() { _ = sourceSQL.Close() })
+	if err := source.Table("users").AutoMigrate(&SourceUser{}); err != nil {
+		t.Fatal(err)
+	}
+	legacy := SourceUser{ID: 8, Username: "provider-only", GitHubID: "github-8", Status: 1}
+	if err := source.Table("users").Create(&legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+	targetCfg := config.Config{DatabaseDriver: "sqlite", DatabaseDSN: filepath.Join(temp, "target.db")}
+	target, err := model.Open(targetCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetSQL, _ := target.DB()
+	t.Cleanup(func() { _ = targetSQL.Close() })
+	runner, err := New(target, targetCfg, Options{SourceDriver: "sqlite", SourceDSN: sourcePath, Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runnerSourceSQL, _ := runner.Source.DB()
+	t.Cleanup(func() { _ = runnerSourceSQL.Close() })
+	imported, err := runner.Import()
+	if err != nil || imported.Imported != 1 {
+		t.Fatalf("provider-only import failed: result=%#v err=%v", imported, err)
+	}
+	var user model.User
+	if err := target.Where("username = ?", legacy.Username).First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	if user.PasswordConfigured || user.PasswordHash == "" {
+		t.Fatalf("passwordless account state is invalid: configured=%v hash_empty=%v", user.PasswordConfigured, user.PasswordHash == "")
+	}
+	verified, err := runner.Verify(imported.BatchID)
+	if err != nil || verified.Verified != 1 || len(verified.Issues) != 0 {
+		t.Fatalf("provider-only verify failed: result=%#v err=%v", verified, err)
+	}
+	var mapping model.IdentityMigrationMapping
+	if err := target.Where("batch_id = ?", imported.BatchID).First(&mapping).Error; err != nil {
+		t.Fatal(err)
+	}
+	legacyUpdatedAt := mapping.CreatedAt.Add(-time.Minute)
+	if err := target.Model(&model.User{}).Where("id = ?", user.ID).Updates(map[string]any{
+		"password_configured": true,
+		"updated_at":          legacyUpdatedAt,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	repaired, err := runner.RepairPasswordState(imported.BatchID)
+	if err != nil || repaired.Reconciled != 1 || repaired.Skipped != 0 {
+		t.Fatalf("password state repair failed: result=%#v err=%v", repaired, err)
+	}
+	if err := target.First(&user, user.ID).Error; err != nil || user.PasswordConfigured {
+		t.Fatalf("password state repair was not persisted: user=%#v err=%v", user, err)
+	}
+}
+
+func TestVerifyAllowsPostMigrationPasswordUpgrade(t *testing.T) {
+	temp := t.TempDir()
+	sourcePath := filepath.Join(temp, "source.db")
+	source, err := gorm.Open(sqlite.Open(sourcePath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceSQL, _ := source.DB()
+	t.Cleanup(func() { _ = sourceSQL.Close() })
+	if err := source.Table("users").AutoMigrate(&SourceUser{}); err != nil {
+		t.Fatal(err)
+	}
+	password, _ := bcrypt.GenerateFromPassword([]byte("Password123"), bcrypt.DefaultCost)
+	legacy := SourceUser{ID: 9, Username: "rehash-user", Password: string(password), Status: 1}
+	if err := source.Table("users").Create(&legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+	targetCfg := config.Config{DatabaseDriver: "sqlite", DatabaseDSN: filepath.Join(temp, "target.db")}
+	target, err := model.Open(targetCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetSQL, _ := target.DB()
+	t.Cleanup(func() { _ = targetSQL.Close() })
+	runner, err := New(target, targetCfg, Options{SourceDriver: "sqlite", SourceDSN: sourcePath, Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runnerSourceSQL, _ := runner.Source.DB()
+	t.Cleanup(func() { _ = runnerSourceSQL.Close() })
+	imported, err := runner.Import()
+	if err != nil || imported.Imported != 1 {
+		t.Fatalf("rehash import failed: result=%#v err=%v", imported, err)
+	}
+	var mapping model.IdentityMigrationMapping
+	if err := target.Where("batch_id = ?", imported.BatchID).First(&mapping).Error; err != nil {
+		t.Fatal(err)
+	}
+	var user model.User
+	if err := target.First(&user, mapping.SSOUserID).Error; err != nil {
+		t.Fatal(err)
+	}
+	upgraded, err := security.HashPassword("Password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := target.Model(&user).Updates(map[string]any{
+		"password_hash": upgraded,
+		"updated_at":    mapping.CreatedAt.Add(time.Second),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	verified, err := runner.Verify(imported.BatchID)
+	if err != nil || verified.Verified != 1 || len(verified.Issues) != 0 {
+		t.Fatalf("post-migration password upgrade was rejected: result=%#v err=%v", verified, err)
 	}
 }
 

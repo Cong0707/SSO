@@ -46,6 +46,7 @@ type Result struct {
 	BatchID     string  `json:"batch_id,omitempty"`
 	SourceUsers int     `json:"source_users"`
 	Imported    int     `json:"imported"`
+	Reconciled  int     `json:"reconciled"`
 	Skipped     int     `json:"skipped"`
 	RolledBack  int     `json:"rolled_back"`
 	Verified    int     `json:"verified"`
@@ -299,8 +300,7 @@ func (r *Runner) Verify(batchID string) (Result, error) {
 			expectedDisplayName = strings.TrimSpace(sourceUser.Username)
 		}
 		expectedUsername, _ := migratedUsername(sourceUser)
-		passwordMismatch := sourceUser.Password != "" && targetUser.PasswordHash != sourceUser.Password
-		passwordMismatch = passwordMismatch || sourceUser.Password == "" && targetUser.PasswordConfigured
+		passwordMismatch := !passwordStateMatches(sourceUser, targetUser, mapping.CreatedAt)
 		expectedRole := "user"
 		if bootstrapAdmin(r.Cfg, normalizeEmail(sourceUser.Email)) {
 			expectedRole = "admin"
@@ -338,6 +338,76 @@ func (r *Runner) Verify(batchID string) (Result, error) {
 		result.Verified++
 	}
 	return result, nil
+}
+
+// RepairPasswordState corrects rows imported by older migration builds where
+// GORM applied the database default and persisted password_configured=true for
+// passwordless users. A row changed after its migration mapping was created is
+// left untouched so a real password configured by the user is never removed.
+func (r *Runner) RepairPasswordState(batchID string) (Result, error) {
+	if batchID == "" {
+		return Result{}, errors.New("batch ID is required")
+	}
+	var mappings []model.IdentityMigrationMapping
+	if err := r.Target.Where("batch_id = ?", batchID).Order("source_user_id ASC").Find(&mappings).Error; err != nil {
+		return Result{}, err
+	}
+	var sourceUsers []SourceUser
+	if err := r.Source.Unscoped().Table("users").Find(&sourceUsers).Error; err != nil {
+		return Result{}, err
+	}
+	sourceByID := make(map[int64]SourceUser, len(sourceUsers))
+	for _, sourceUser := range sourceUsers {
+		sourceByID[sourceUser.ID] = sourceUser
+	}
+	result := Result{BatchID: batchID}
+	for _, mapping := range mappings {
+		sourceUser, ok := sourceByID[mapping.SourceUserID]
+		if !ok {
+			result.Skipped++
+			result.Issues = append(result.Issues, Issue{SourceUserID: mapping.SourceUserID, Severity: "error", Kind: "source_missing", Detail: "source user no longer exists"})
+			continue
+		}
+		if sourceUser.Password != "" {
+			continue
+		}
+		var targetUser model.User
+		if err := r.Target.First(&targetUser, mapping.SSOUserID).Error; err != nil {
+			result.Skipped++
+			result.Issues = append(result.Issues, Issue{SourceUserID: mapping.SourceUserID, Severity: "error", Kind: "target_missing", Detail: "mapped SSO user no longer exists"})
+			continue
+		}
+		if !targetUser.PasswordConfigured {
+			result.Verified++
+			continue
+		}
+		updated := r.Target.Model(&model.User{}).
+			Where("id = ? AND password_configured = ? AND updated_at <= ?", targetUser.ID, true, mapping.CreatedAt).
+			UpdateColumn("password_configured", false)
+		if updated.Error != nil {
+			return result, updated.Error
+		}
+		if updated.RowsAffected == 0 {
+			result.Skipped++
+			result.Issues = append(result.Issues, Issue{SourceUserID: mapping.SourceUserID, Severity: "error", Kind: "password_state_changed_after_import", Detail: "password state changed after migration; manual review required"})
+			continue
+		}
+		result.Reconciled++
+	}
+	return result, nil
+}
+
+func passwordStateMatches(sourceUser SourceUser, targetUser model.User, migratedAt time.Time) bool {
+	if sourceUser.Password == "" {
+		return !targetUser.PasswordConfigured
+	}
+	if !targetUser.PasswordConfigured {
+		return false
+	}
+	if targetUser.PasswordHash == sourceUser.Password {
+		return true
+	}
+	return targetUser.UpdatedAt.After(migratedAt) && security.ValidPasswordHashEncoding(targetUser.PasswordHash)
 }
 
 // Rollback is intentionally limited to a batch before it is enabled for real
@@ -591,6 +661,12 @@ func (r *Runner) importUser(batchID string, sourceUser SourceUser, duplicateEmai
 		}
 		if err := tx.Create(&user).Error; err != nil {
 			return err
+		}
+		if sourceUser.Password == "" {
+			if err := tx.Model(&user).UpdateColumn("password_configured", false).Error; err != nil {
+				return err
+			}
+			user.PasswordConfigured = false
 		}
 		if email != "" && validEmail(email) && !duplicateEmail {
 			var verifiedAt *time.Time
