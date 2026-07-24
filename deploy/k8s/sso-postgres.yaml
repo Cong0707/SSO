@@ -81,8 +81,8 @@ spec:
                 requests:
                   storage: 30Gi
           schedules:
-            full: "0 0 3 * * 0"
-            differential: "0 0 3 * * 1-6"
+            full: "0 3 * * 0"
+            differential: "0 3 * * 1-6"
             incremental: "0 */6 * * *"
   users:
     - name: sso
