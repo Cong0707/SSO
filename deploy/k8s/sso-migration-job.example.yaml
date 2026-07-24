@@ -20,7 +20,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: migrate
-          image: docker.io/library/sso:git-fbac8a3
+          image: docker.io/library/sso:git-1e9dcc3
           imagePullPolicy: IfNotPresent
           command: ["/app/sso-migrate"]
           envFrom:
