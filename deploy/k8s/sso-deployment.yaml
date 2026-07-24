@@ -46,7 +46,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: sso
-          image: docker.io/library/sso:git-b655eb6
+          image: docker.io/library/sso:git-2cf0221
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
