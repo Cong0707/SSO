@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: sso
 spec:
-  replicas: 2
+  replicas: 3
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -29,6 +29,7 @@ spec:
                     operator: In
                     values:
                       - cool-bliss-1.localdomain
+                      - valuable-delight-2.localdomain
                       - ovh-1
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
