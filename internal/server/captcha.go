@@ -116,11 +116,14 @@ func (s *Server) capProxy(c *gin.Context) {
 		s.serveError(c, http.StatusBadGateway, "Cap 请求无效")
 		return
 	}
-	for _, name := range []string{"Accept", "Content-Type"} {
+	for _, name := range []string{"Accept", "Content-Type", "User-Agent"} {
 		if value := c.GetHeader(name); value != "" {
 			request.Header.Set(name, value)
 		}
 	}
+	// Cap keys its per-client rate limit on this header; without it every
+	// proxied visitor lands in one shared bucket and gets throttled together.
+	request.Header.Set("X-Forwarded-For", clientIP(c))
 	response, err := captchaHTTPClient.Do(request)
 	if err != nil {
 		s.serveError(c, http.StatusBadGateway, "Cap service unavailable")
